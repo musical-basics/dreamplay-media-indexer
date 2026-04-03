@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
       search: sp.get('search') ?? undefined,
       minDuration: sp.get('minDuration') ? parseFloat(sp.get('minDuration')!) : undefined,
       maxDuration: sp.get('maxDuration') ? parseFloat(sp.get('maxDuration')!) : undefined,
-      limit: sp.get('limit') ? parseInt(sp.get('limit')!) : 200,
+      limit: sp.get('limit') ? parseInt(sp.get('limit')!) : 1000,
       offset: sp.get('offset') ? parseInt(sp.get('offset')!) : 0,
     };
 
