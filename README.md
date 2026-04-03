@@ -1,36 +1,111 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DreamPlay Media Indexer
 
-## Getting Started
+AI-powered photo & video search and DaVinci Resolve / Final Cut Pro timeline export tool.
 
-First, run the development server:
+## Quick Start
 
+### 1. Install dependencies
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm approve-builds  # approve better-sqlite3, esbuild, protobufjs
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Configure `.env.local` (already set up)
+```
+GEMINI_API_KEY=...
+ASSETS_ROOT=/Users/lionelyu/Documents/DreamPlay Assets
+CATALOG_DB_PATH=.../.indexer-cache/catalog.db
+THUMBS_DIR=.../.indexer-cache/thumbs
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. Run the ingestion agent
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**One-shot full scan (all assets):**
+```bash
+pnpm ingest
+```
 
-## Learn More
+**Final clips only (faster for quick load):**
+```bash
+pnpm ingest --final
+```
 
-To learn more about Next.js, take a look at the following resources:
+**Watch mode (auto-index new drops):**
+```bash
+pnpm watch
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Test with first 5 files:**
+```bash
+pnpm ingest --limit=5
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 4. Launch the search UI
+```bash
+pnpm dev
+```
+Opens at **http://localhost:3001**
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## How to Use
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Searching
+- Use the **left sidebar** to filter by: Zone (A/B/C), DS Model, Subject, Purpose, Campaign, Shot Type, Status, Color Label, Orientation
+- Use the **search bar** to full-text search descriptions, AI keywords, and filenames
+- **Color label chips** reflect your Finder labels — red/purple = high priority
+
+### Selecting
+- **Click** → single select / toggle
+- **Shift+Click** → range select
+- **Cmd+Click** → add/remove without deselecting
+- **Alt+Click** (or double-click) → open detail modal
+
+### Exporting
+Once you have clips selected, the **export tray** appears at the bottom:
+- **Export DaVinci XML** → `.xml` file, import via _File → Import Timeline_ in DaVinci Resolve
+- **Export FCPXML** → `.fcpxml` file, import via _File → Import_ in Final Cut Pro
+- **Copy Paths** → newline-separated list of file paths for Finder / terminal
+
+---
+
+## DreamPlay Taxonomy
+
+| Zone | DS Model | Hand Span |
+|------|----------|-----------|
+| Zone A | DS5.5® | < 7.6" |
+| Zone B | DS6.0® | 7.6"–8.5" |
+| Zone C | DS6.5™ | > 8.5" |
+
+## Final Clip Detection Logic
+
+A clip is marked **FINAL** if:
+- Path contains: `Resolve Renders`, `Exported Renders`, `Colorgraded Exports`, `Final Cut Export`, `YouTube`, `For Editor`
+- File is `.m4v` format
+- Clip is ≤ 3.5 seconds AND in a render/export subfolder
+
+A clip is marked **RAW** if:
+- Codec is ProRes (`prores`)
+
+## Architecture
+
+```
+src/
+├── app/
+│   ├── page.tsx          ← Main UI (Lightroom-style)
+│   ├── globals.css       ← Dark luxury styles
+│   └── api/
+│       ├── assets/       ← Query endpoint
+│       ├── export/       ← DaVinci XML + FCPXML export
+│       └── thumb/        ← Thumbnail server
+├── lib/
+│   ├── taxonomy.ts       ← DreamPlay tag schema
+│   ├── db.ts             ← SQLite catalog
+│   ├── tagger.ts         ← Gemini Vision AI tagger
+│   ├── media-utils.ts    ← ffprobe, thumbnail gen, color labels
+│   └── exporters/
+│       ├── davinci-xml.ts
+│       └── fcpxml.ts
+└── scripts/
+    └── ingest.ts         ← Ingestion agent
+```

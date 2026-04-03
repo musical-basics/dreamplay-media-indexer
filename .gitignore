@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# DreamPlay Media Indexer — cache
+.indexer-cache/
+
+# Repomix output (keep config)
+repomix-output*.xml
+repomix-output*.txt
+!repomix.config.json
+
