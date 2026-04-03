@@ -1,6 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  SUBJECT_PRESETS,
+  SHOT_TYPE_PRESETS,
+  MOOD_PRESETS,
+  CAMPAIGN_PRESETS,
+  OUTPUT_FORMAT_PRESETS,
+  DS_MODELS,
+} from '@/lib/brand-config';
+import type { PromptGenerateRequest } from '@/app/api/prompt-generate/route';
 
 interface Asset {
   id: string;
@@ -65,6 +74,245 @@ function thumbUrl(asset: Asset): string {
   if (asset.thumbPath) return `/api/thumb?path=${encodeURIComponent(asset.thumbPath)}`;
   return '';
 }
+
+// ── Prompt Box Component ────────────────────────────────────────────────────
+
+function PromptBox() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedSubject, setSelectedSubject] = useState('');
+  const [selectedShot, setSelectedShot] = useState('');
+  const [selectedMood, setSelectedMood] = useState('');
+  const [selectedCampaign, setSelectedCampaign] = useState('none');
+  const [selectedDsModel, setSelectedDsModel] = useState('');
+  const [selectedFormat, setSelectedFormat] = useState('');
+  const [customNotes, setCustomNotes] = useState('');
+  const [generatedPrompt, setGeneratedPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [copyMsg, setCopyMsg] = useState('');
+  const [error, setError] = useState('');
+
+  async function handleGenerate() {
+    setIsGenerating(true);
+    setError('');
+    setGeneratedPrompt('');
+
+    const subjectPreset = SUBJECT_PRESETS.find(p => p.id === selectedSubject);
+    const shotPreset = SHOT_TYPE_PRESETS.find(p => p.id === selectedShot);
+    const moodPreset = MOOD_PRESETS.find(p => p.id === selectedMood);
+    const campaignPreset = CAMPAIGN_PRESETS.find(p => p.id === selectedCampaign);
+    const dsModelData = DS_MODELS[selectedDsModel as keyof typeof DS_MODELS];
+    const formatPreset = OUTPUT_FORMAT_PRESETS.find(p => p.id === selectedFormat);
+
+    const body: PromptGenerateRequest = {
+      subjectPrompt: subjectPreset?.prompt ?? '',
+      shotTypePrompt: shotPreset?.prompt ?? '',
+      moodPrompt: moodPreset?.prompt ?? '',
+      campaignPrompt: campaignPreset?.id !== 'none' ? (campaignPreset?.prompt ?? '') : '',
+      dsModel: selectedDsModel,
+      dsModelDescription: dsModelData?.description ?? '',
+      outputFormat: formatPreset?.prompt ?? '',
+      customNotes,
+    };
+
+    try {
+      const res = await fetch('/api/prompt-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setGeneratedPrompt(data.prompt);
+    } catch (err) {
+      setError(String(err));
+    }
+    setIsGenerating(false);
+  }
+
+  function handleCopy() {
+    if (!generatedPrompt) return;
+    navigator.clipboard.writeText(generatedPrompt);
+    setCopyMsg('Copied!');
+    setTimeout(() => setCopyMsg(''), 2000);
+  }
+
+  function handleReset() {
+    setSelectedSubject('');
+    setSelectedShot('');
+    setSelectedMood('');
+    setSelectedCampaign('none');
+    setSelectedDsModel('');
+    setSelectedFormat('');
+    setCustomNotes('');
+    setGeneratedPrompt('');
+    setError('');
+  }
+
+  const hasSelections = selectedSubject || selectedShot || selectedMood || selectedDsModel;
+
+  return (
+    <div className={`prompt-box ${isOpen ? 'open' : ''}`}>
+      {/* Toggle header */}
+      <button className="prompt-toggle" onClick={() => setIsOpen(v => !v)}>
+        <span className="prompt-toggle-left">
+          <span className="prompt-icon">✨</span>
+          <span className="prompt-toggle-title">Prompt Builder</span>
+          <span className="prompt-toggle-sub">Generate brand-accurate AI prompts from presets</span>
+        </span>
+        <span className="prompt-toggle-chevron">{isOpen ? '▲' : '▼'}</span>
+      </button>
+
+      {isOpen && (
+        <div className="prompt-body">
+          {/* Preset rows */}
+          <div className="prompt-presets-grid">
+            {/* Subject */}
+            <div className="preset-group">
+              <div className="preset-label">Subject</div>
+              <div className="preset-chips">
+                {SUBJECT_PRESETS.map(p => (
+                  <button
+                    key={p.id}
+                    className={`preset-chip ${selectedSubject === p.id ? 'active' : ''}`}
+                    onClick={() => setSelectedSubject(v => v === p.id ? '' : p.id)}
+                  >{p.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* DS Model */}
+            <div className="preset-group">
+              <div className="preset-label">DS Model</div>
+              <div className="preset-chips">
+                {Object.entries(DS_MODELS).map(([key, val]) => (
+                  <button
+                    key={key}
+                    className={`preset-chip ds ${selectedDsModel === key ? 'active' : ''}`}
+                    onClick={() => setSelectedDsModel(v => v === key ? '' : key)}
+                  >{val.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Shot Type */}
+            <div className="preset-group">
+              <div className="preset-label">Shot Type</div>
+              <div className="preset-chips">
+                {SHOT_TYPE_PRESETS.map(p => (
+                  <button
+                    key={p.id}
+                    className={`preset-chip ${selectedShot === p.id ? 'active' : ''}`}
+                    onClick={() => setSelectedShot(v => v === p.id ? '' : p.id)}
+                  >{p.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Mood */}
+            <div className="preset-group">
+              <div className="preset-label">Mood / Style</div>
+              <div className="preset-chips">
+                {MOOD_PRESETS.map(p => (
+                  <button
+                    key={p.id}
+                    className={`preset-chip ${selectedMood === p.id ? 'active' : ''}`}
+                    onClick={() => setSelectedMood(v => v === p.id ? '' : p.id)}
+                  >{p.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Campaign */}
+            <div className="preset-group">
+              <div className="preset-label">Campaign Context</div>
+              <div className="preset-chips">
+                {CAMPAIGN_PRESETS.map(p => (
+                  <button
+                    key={p.id}
+                    className={`preset-chip ${selectedCampaign === p.id ? 'active' : ''}`}
+                    onClick={() => setSelectedCampaign(v => v === p.id ? 'none' : p.id)}
+                  >{p.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Output Format */}
+            <div className="preset-group">
+              <div className="preset-label">Output Format</div>
+              <div className="preset-chips">
+                {OUTPUT_FORMAT_PRESETS.map(p => (
+                  <button
+                    key={p.id}
+                    className={`preset-chip ${selectedFormat === p.id ? 'active' : ''}`}
+                    onClick={() => setSelectedFormat(v => v === p.id ? '' : p.id)}
+                  >{p.label}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Custom notes */}
+          <div className="prompt-notes-row">
+            <textarea
+              className="prompt-notes"
+              placeholder="Extra context or details… (e.g. 'show the sustain pedal', 'blue ambient lighting', 'two hands technique')"
+              value={customNotes}
+              onChange={e => setCustomNotes(e.target.value)}
+              rows={2}
+            />
+          </div>
+
+          {/* Action row */}
+          <div className="prompt-actions">
+            <button
+              className="prompt-generate-btn"
+              onClick={handleGenerate}
+              disabled={isGenerating || !hasSelections}
+            >
+              {isGenerating ? (
+                <><span className="prompt-spinner" />Generating…</>
+              ) : '✨ Generate Prompt'}
+            </button>
+            {(hasSelections || generatedPrompt) && (
+              <button className="prompt-reset-btn" onClick={handleReset}>↺ Reset</button>
+            )}
+          </div>
+
+          {/* Output */}
+          {isGenerating && (
+            <div className="prompt-output-shimmer">
+              <div className="shimmer-bar w80" />
+              <div className="shimmer-bar w60" />
+              <div className="shimmer-bar w90" />
+              <div className="shimmer-bar w50" />
+            </div>
+          )}
+
+          {error && <div className="prompt-error">⚠ {error}</div>}
+
+          {generatedPrompt && !isGenerating && (
+            <div className="prompt-output-wrap">
+              <div className="prompt-output-header">
+                <span className="prompt-output-label">Generated Prompt</span>
+                <button className="prompt-copy-btn" onClick={handleCopy}>
+                  {copyMsg || '📋 Copy'}
+                </button>
+              </div>
+              <textarea
+                className="prompt-output"
+                readOnly
+                value={generatedPrompt}
+                rows={5}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main Page ───────────────────────────────────────────────────────────────
 
 export default function MediaIndexer() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -334,8 +582,11 @@ export default function MediaIndexer() {
           )}
         </aside>
 
-        {/* ── Main Grid ── */}
+        {/* ── Main Content ── */}
         <main className="main-content">
+          {/* ── Prompt Box ── */}
+          <PromptBox />
+
           <div className="grid-header">
             <div className="grid-info">
               {loading ? 'Loading…' : `${total.toLocaleString()} assets`}
