@@ -64,7 +64,51 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_priority ON assets(priority);
     CREATE INDEX IF NOT EXISTS idx_colorLabel ON assets(colorLabel);
     CREATE INDEX IF NOT EXISTS idx_mediaType ON assets(mediaType);
+
+    CREATE TABLE IF NOT EXISTS drafts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      createdAt INTEGER,
+      updatedAt INTEGER,
+      data TEXT
+    );
   `);
+}
+
+// ── Draft helpers ─────────────────────────────────────────────────────────
+
+export interface DraftRecord {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  data: string; // JSON blob
+}
+
+export function saveDraft(id: string, name: string, data: object): DraftRecord {
+  const db = getDb();
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO drafts (id, name, createdAt, updatedAt, data)
+    VALUES (@id, @name, @createdAt, @updatedAt, @data)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      updatedAt = excluded.updatedAt,
+      data = excluded.data
+  `).run({ id, name, createdAt: now, updatedAt: now, data: JSON.stringify(data) });
+  return db.prepare('SELECT * FROM drafts WHERE id = ?').get(id) as DraftRecord;
+}
+
+export function listDrafts(): DraftRecord[] {
+  return getDb().prepare('SELECT * FROM drafts ORDER BY updatedAt DESC').all() as DraftRecord[];
+}
+
+export function getDraft(id: string): DraftRecord | undefined {
+  return getDb().prepare('SELECT * FROM drafts WHERE id = ?').get(id) as DraftRecord | undefined;
+}
+
+export function deleteDraft(id: string): void {
+  getDb().prepare('DELETE FROM drafts WHERE id = ?').run(id);
 }
 
 export function upsertAsset(asset: AssetRecord) {
