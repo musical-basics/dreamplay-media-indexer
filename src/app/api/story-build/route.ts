@@ -106,12 +106,14 @@ export async function POST(req: NextRequest) {
           (a.durationSeconds && a.durationSeconds > 2 && a.durationSeconds < 30 ? 20 : 0),
       }))
       .sort((a, b) => b.score - a.score)
-      .slice(0, 40);
+      .slice(0, 20);
 
     const assetSummaries = scored.map((s, i) => {
       const a = s.asset;
-      const dur = a.durationSeconds ? `${a.durationSeconds.toFixed(1)}s` : 'unknown';
-      return `[${i}] id:${a.id} | subject:${a.subject} | shot:${a.shotType} | model:${a.dsModel ?? 'unknown'} | duration:${dur} | status:${a.finalStatus} | priority:${a.priority} | mood:${a.mood} | desc:"${a.aiDescription}"`;
+      const dur = a.durationSeconds ? `${a.durationSeconds.toFixed(1)}s` : '?s';
+      // Keep descriptions short to reduce token usage
+      const shortDesc = (a.aiDescription || '').slice(0, 80);
+      return `[${i}] id:${a.id} subject:${a.subject} shot:${a.shotType} model:${a.dsModel ?? '-'} dur:${dur} status:${a.finalStatus} priority:${a.priority} desc:"${shortDesc}"`;
     }).join('\n');
 
     const formatDesc = FORMAT_CONTEXT[format] || FORMAT_CONTEXT['custom'];
@@ -176,14 +178,22 @@ Return ONLY this JSON structure:
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.75,
-        maxOutputTokens: 2000,
+        temperature: 0.7,
+        maxOutputTokens: 8192,
       },
     });
 
     const raw = response.text?.trim() ?? '';
     const cleaned = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim();
-    const parsed = JSON.parse(cleaned) as StoryBuildResponse;
+    
+    let parsed: StoryBuildResponse;
+    try {
+      parsed = JSON.parse(cleaned) as StoryBuildResponse;
+    } catch (parseErr) {
+      console.error('[story-build] JSON parse failed. Raw response (first 500 chars):', cleaned.slice(0, 500));
+      console.error('[story-build] Parse error:', parseErr);
+      throw new Error(`AI returned malformed JSON: ${String(parseErr)}. Try again — this is usually a transient issue.`);
+    }
 
     // Attach full asset records for selected clips
     const selectedIds = new Set(parsed.selectedAssetIds);
