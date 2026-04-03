@@ -5,10 +5,9 @@
  *   pnpm ingest           → one-shot full scan
  *   pnpm ingest --watch   → continuous watch mode
  *   pnpm ingest --final   → only index final/rendered clips
- *   pnpm ingest --limit N → only index first N files (testing)
+ *   pnpm ingest --limit=N → only index first N files (testing)
  */
 
-import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -28,7 +27,7 @@ import { upsertAsset, getAssetByPath } from '../lib/db';
 import { probeMedia, generateThumbnail, readMacColorLabel } from '../lib/media-utils';
 import { analyzeAssetWithGemini } from '../lib/tagger';
 
-// Load dotenv
+// Load .env.local manually
 const dotenvPath = path.resolve(process.cwd(), '.env.local');
 if (fs.existsSync(dotenvPath)) {
   const lines = fs.readFileSync(dotenvPath, 'utf8').split('\n');
