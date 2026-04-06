@@ -67,7 +67,7 @@ Keep everything else the same. Return ONLY the full updated JSON object (same sc
 
     // Generate a brief AI reply summarizing what changed
     const summaryRes = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [{ text: `In 1-2 sentences, summarize what changes you made to this video script based on the request: "${message}". Be conversational and brief.` }] }],
       config: { temperature: 0.7, maxOutputTokens: 100 },
     });
