@@ -632,6 +632,7 @@ export default function MediaIndexer() {
   const [exporting, setExporting] = useState(false);
   const [copyMsg, setCopyMsg] = useState('');
   const [showStoryBuilder, setShowStoryBuilder] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(180);
   const lastClickedRef = useRef<string | null>(null);
 
   const [filters, setFilters] = useState({
@@ -784,6 +785,10 @@ export default function MediaIndexer() {
             <div className="grid-info">
               {loading ? 'Loading…' : `${total.toLocaleString()} assets`}
               {selected.size > 0 && <span className="selected-badge">{selected.size} selected</span>}
+              <div className="zoom-slider-wrap">
+                <span className="zoom-icon">🔍</span>
+                <input type="range" className="zoom-slider" min="60" max="360" step="10" value={zoomLevel} onChange={e => setZoomLevel(Number(e.target.value))} title="Adjust thumbnail size" />
+              </div>
             </div>
             <div className="grid-actions">
               <button className="story-builder-btn" onClick={() => setShowStoryBuilder(true)}>🎬 Build Story</button>
@@ -796,7 +801,7 @@ export default function MediaIndexer() {
             </div>
           </div>
 
-          <div className="asset-grid">
+          <div className={`asset-grid ${zoomLevel < 120 ? 'dense' : ''}`} style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${zoomLevel}px, 1fr))` }}>
             {assets.map(asset => {
               const isSelected = selected.has(asset.id);
               const thumb = thumbUrl(asset);
