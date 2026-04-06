@@ -801,14 +801,14 @@ export default function MediaIndexer() {
             </div>
           </div>
 
-          <div className={`asset-grid ${zoomLevel < 120 ? 'dense' : ''}`} style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${zoomLevel}px, 1fr))` }}>
+          <div className={`asset-grid ${zoomLevel < 120 ? 'dense' : ''}`} style={{ gridTemplateColumns: `repeat(auto-fill, minmax(max(${zoomLevel}px, 6.5%), 1fr))` }}>
             {assets.map(asset => {
               const isSelected = selected.has(asset.id);
               const thumb = thumbUrl(asset);
               const keywords = (() => { try { return JSON.parse(asset.aiKeywords) as string[]; } catch { return []; } })();
               return (
-                <div key={asset.id} className={`asset-card ${isSelected ? 'selected' : ''} ${asset.priority === 'high' ? 'priority' : ''}`} onClick={(e) => handleAssetClick(asset, e)} onDoubleClick={() => setDetail(asset)}>
-                  <div className="asset-thumb-wrap">
+                <div key={asset.id} className={`asset-card ${isSelected ? 'selected' : ''} ${asset.priority === 'high' ? 'priority' : ''} ${asset.orientation === 'portrait' ? 'portrait' : ''}`} onClick={(e) => handleAssetClick(asset, e)} onDoubleClick={() => setDetail(asset)}>
+                  <div className="asset-thumb-wrap" style={{ aspectRatio: asset.orientation === 'portrait' ? '9/16' : asset.orientation === 'square' ? '1/1' : '16/9' }}>
                     {thumb ? <img src={thumb} alt={asset.fileName} className="asset-thumb" loading="lazy" /> : <div className="asset-thumb-placeholder">{asset.mediaType === 'video' ? '🎬' : '🖼'}</div>}
                     {asset.mediaType === 'video' && (<div className="video-overlay"><span className="play-icon">▶</span>{asset.durationSeconds && <span className="duration-badge">{formatDuration(asset.durationSeconds)}</span>}</div>)}
                     {asset.finalStatus === 'final' && <div className="final-badge">FINAL</div>}

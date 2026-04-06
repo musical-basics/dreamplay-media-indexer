@@ -167,9 +167,9 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   overflow-y: auto;
   padding: 12px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
+  gap: 6px;
   align-content: start;
+  grid-auto-rows: min-content;
   scrollbar-width: thin;
   scrollbar-color: var(--bg4) transparent;
   min-height: 0;
@@ -194,7 +194,8 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 
 .asset-thumb-wrap {
-  width: 100%; aspect-ratio: 16/9; background: var(--bg3); position: relative; overflow: hidden;
+  width: 100%; background: var(--bg3); position: relative; overflow: hidden;
+  /* aspect-ratio applied via inline style per-asset based on orientation */
 }
 .asset-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
 .asset-thumb-placeholder {
