@@ -678,6 +678,27 @@ export default function MediaIndexer() {
 
   useEffect(() => { fetchAssets(); }, [fetchAssets]);
 
+  // Keyboard shortcuts: Space → preview last selected, Escape → close preview
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        const id = lastClickedRef.current;
+        if (id) {
+          setDetail(prev => {
+            if (prev) return null; // toggle off if already open
+            return assets.find(a => a.id === id) ?? null;
+          });
+        }
+      }
+      if (e.code === 'Escape') setDetail(null);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [assets]);
+
   function setFilter(key: string, value: string) {
     setFilters(prev => ({ ...prev, [key]: prev[key as keyof typeof prev] === value ? '' : value }));
   }
