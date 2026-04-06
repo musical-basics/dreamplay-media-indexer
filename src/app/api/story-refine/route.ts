@@ -26,13 +26,29 @@ export async function POST(req: NextRequest) {
     const body: RefineRequest = await req.json();
     const { currentResult, message, format, targetDurationSec } = body;
 
+    // Strip the assets array (large DB records) — Gemini only needs the story fields
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { assets: _assets, ...storyOnly } = currentResult as any;
+    void _assets; // unused
+
+    // Also slim down storyboard to essential fields only
+    const slimStoryboard = (storyOnly.storyboard ?? []).map((c: Record<string, unknown>) => ({
+      assetId: c.assetId, order: c.order, role: c.role,
+      suggestedStartSec: c.suggestedStartSec, suggestedEndSec: c.suggestedEndSec,
+      scriptLine: c.scriptLine, overlayText: c.overlayText,
+      overlayPlacement: c.overlayPlacement, overlayStyle: c.overlayStyle,
+      transitionNote: c.transitionNote,
+    }));
+
+    const slimResult = { ...storyOnly, storyboard: slimStoryboard };
+
     const prompt = `You are an elite short-form video director for DreamPlay Pianos.
 
 The user has an existing video storyboard they want to refine. Their feedback is:
 "${message}"
 
 Current story JSON:
-${JSON.stringify(currentResult, null, 2)}
+${JSON.stringify(slimResult, null, 2)}
 
 FORMAT: ${format}
 TARGET DURATION: ${targetDurationSec}s
@@ -45,7 +61,7 @@ Apply the user's requested changes to the story. You can update:
 - directorNotes
 - storyboard clip roles, timings, or scriptLines
 
-Keep everything else the same. Return ONLY the full updated JSON object (same schema as the input).`;
+Keep everything else the same (especially assetId values). Return ONLY the full updated JSON object (same schema as the input).`;
 
     const ai = getAI();
     const response = await ai.models.generateContent({
