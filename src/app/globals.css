@@ -125,6 +125,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   flex-direction: column;
   overflow: hidden;
   background: var(--bg);
+  min-height: 0;
 }
 
 .grid-header {
@@ -156,6 +157,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
   align-content: start;
   scrollbar-width: thin;
   scrollbar-color: var(--bg4) transparent;
+  min-height: 0;
 }
 
 .asset-card {
