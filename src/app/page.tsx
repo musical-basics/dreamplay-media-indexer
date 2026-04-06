@@ -186,6 +186,78 @@ function PromptBox() {
   );
 }
 
+// ── Sequential Video Player ──────────────────────────────────────────────────
+interface SeqClip { clip: { role: string; suggestedStartSec: number; suggestedEndSec: number; overlayText?: string }; asset: Asset | undefined; }
+
+function SequentialPlayer({ clips }: { clips: SeqClip[] }) {
+  const [idx, setIdx] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const current = clips[idx];
+  const streamUrl = current?.asset?.filePath
+    ? `/api/stream?path=${encodeURIComponent(current.asset.filePath)}`
+    : null;
+
+  // When clip changes, load + play
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !streamUrl) return;
+    v.load();
+    if (playing) v.play().catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx, streamUrl]);
+
+  function onEnded() {
+    if (idx < clips.length - 1) {
+      setIdx(i => i + 1);
+    } else {
+      setPlaying(false);
+      setIdx(0);
+    }
+  }
+
+  function togglePlay() {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) { v.play().catch(() => {}); setPlaying(true); }
+    else { v.pause(); setPlaying(false); }
+  }
+
+  if (!streamUrl) return null;
+
+  return (
+    <div className="seq-player">
+      <div className="seq-video-wrap">
+        <video ref={videoRef} className="seq-video" onEnded={onEnded} onClick={togglePlay}
+          src={streamUrl} playsInline controls={false}
+          style={{ cursor: 'pointer' }} />
+        {current.clip.overlayText && (
+          <div className="seq-overlay-text">{current.clip.overlayText}</div>
+        )}
+        {!playing && (
+          <div className="seq-play-btn" onClick={togglePlay}>
+            <svg viewBox="0 0 24 24" fill="currentColor" width="40" height="40"><polygon points="5,3 19,12 5,21"/></svg>
+          </div>
+        )}
+        <div className="seq-clip-counter">{idx + 1} / {clips.length} · {current.clip.role}</div>
+      </div>
+      {/* Filmstrip scrubber */}
+      <div className="seq-filmstrip">
+        {clips.map((c, i) => (
+          <div key={i} className={`seq-frame ${i === idx ? 'active' : ''}`} onClick={() => { setIdx(i); setPlaying(false); }}>
+            {c.asset?.thumbPath
+              ? <img src={`/api/thumb?path=${encodeURIComponent(c.asset.thumbPath)}`} alt="" className="seq-frame-img" />
+              : <div className="seq-frame-placeholder">🎬</div>
+            }
+            <div className="seq-frame-role" style={{ background: ROLE_COLORS[c.clip.role] ?? '#555' }}>{c.clip.role}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Story Builder Overlay ────────────────────────────────────────────────────
 interface StoryBuilderProps { onClose: () => void; }
 
@@ -548,59 +620,54 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
             </div>
           )}
 
-          {/* ── Step 5: Preview ── */}
-          {step === 5 && result && (
-            <div className="story-step-content">
-              <div className="story-section-title">Reel Preview
-                <span className="story-section-sub"> — {result.totalEstimatedDuration}s estimated · no video buffering</span>
-              </div>
-              {/* Filmstrip */}
-              <div className="filmstrip">
-                {storyboard.map((clip, idx) => {
-                  const asset = selectedAsset(clip.assetId);
-                  return (
-                    <div key={idx} className="filmstrip-frame">
-                      <div className="filmstrip-thumb-wrap">
-                        {asset?.thumbPath
-                          ? <img src={thumbUrl(asset)} alt="" className="filmstrip-img" />
-                          : <div className="filmstrip-placeholder">{asset?.mediaType === 'video' ? '🎬' : '🖼'}</div>}
-                        <div className="filmstrip-role" style={{ background: ROLE_COLORS[clip.role] ?? '#666' }}>{clip.role}</div>
-                        {clip.overlayText && (
-                          <div className={`filmstrip-overlay-text placement-${clip.overlayPlacement}`}>{clip.overlayText}</div>
-                        )}
-                      </div>
-                      <div className="filmstrip-dur">{clip.suggestedEndSec - clip.suggestedStartSec}s</div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Full script preview */}
-              <div className="story-preview-script">
-                <div className="story-script-label">📝 Full Script</div>
-                <div className="story-script-text">{result.fullScript}</div>
-              </div>
-
-              {/* Music quick-ref */}
-              {result.musicSuggestion && (
-                <div className="story-preview-music">
-                  <span className="story-preview-music-label">🎵 Music</span>
-                  <span>{result.musicSuggestion.mood} · {result.musicSuggestion.bpmRange} BPM · {result.musicSuggestion.energy} energy</span>
-                  {result.musicSuggestion.trendingSongs?.[0] && (
-                    <span className="story-preview-song">Try: "{result.musicSuggestion.trendingSongs[0].title}" — {result.musicSuggestion.trendingSongs[0].artist}</span>
-                  )}
+          {/* \u2500\u2500 Step 5: Preview \u2500\u2500 */}
+          {step === 5 && result && (() => {
+            const videoClips = storyboard
+              .map(clip => ({ clip, asset: selectedAsset(clip.assetId) }))
+              .filter(({ asset }) => asset?.mediaType === 'video' && asset?.filePath);
+            return (
+              <div className="story-step-content">
+                <div className="story-section-title">Reel Preview
+                  <span className="story-section-sub"> — {videoClips.length} clips · plays in sequence</span>
                 </div>
-              )}
 
-              {/* Save draft */}
-              <div className="story-save-row">
-                <input className="story-draft-name-input" placeholder="Draft name…" value={draftName} onChange={e => setDraftName(e.target.value)} />
-                <button className="story-save-btn" onClick={handleSaveDraft} disabled={savingDraft || !draftName.trim()}>
-                  {savingDraft ? 'Saving…' : savedMsg || '💾 Save Draft'}
-                </button>
+                {/* Sequential video player */}
+                {videoClips.length > 0
+                  ? <SequentialPlayer clips={videoClips} />
+                  : (
+                    <div className="preview-no-video">
+                      <span>No video clips selected — add video assets in Step 2 to preview.</span>
+                    </div>
+                  )
+                }
+
+                {/* Full script preview */}
+                <div className="story-preview-script">
+                  <div className="story-script-label">📝 Full Script</div>
+                  <div className="story-script-text">{result.fullScript}</div>
+                </div>
+
+                {/* Music quick-ref */}
+                {result.musicSuggestion && (
+                  <div className="story-preview-music">
+                    <span className="story-preview-music-label">🎵 Music</span>
+                    <span>{result.musicSuggestion.mood} · {result.musicSuggestion.bpmRange} BPM · {result.musicSuggestion.energy} energy</span>
+                    {result.musicSuggestion.trendingSongs?.[0] && (
+                      <span className="story-preview-song">Try: &quot;{result.musicSuggestion.trendingSongs[0].title}&quot; — {result.musicSuggestion.trendingSongs[0].artist}</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Save draft */}
+                <div className="story-save-row">
+                  <input className="story-draft-name-input" placeholder="Draft name…" value={draftName} onChange={e => setDraftName(e.target.value)} />
+                  <button className="story-save-btn" onClick={handleSaveDraft} disabled={savingDraft || !draftName.trim()}>
+                    {savingDraft ? 'Saving…' : savedMsg || '💾 Save Draft'}
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         {/* Footer nav */}
