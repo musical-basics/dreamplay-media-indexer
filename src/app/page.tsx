@@ -486,9 +486,15 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
   const [result, setResult] = useState<(StoryBuildResponse & { assets: Asset[] }) | null>(null);
   const [storyboard, setStoryboard] = useState<StoryboardClip[]>([]);
   const [error, setError] = useState('');
-  const [editScript, setEditScript] = useState(''); // editable full script (Step 5)
+  const [editScript, setEditScript] = useState('');
   const [dragOver2, setDragOver2] = useState<number | null>(null);
   const dragRef2 = useRef<number | null>(null);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState('');
+  // Per-row suggestion state: { rowIdx, prompt, loading }
+  const [suggestRow, setSuggestRow] = useState<number | null>(null);
+  const [suggestPrompt, setSuggestPrompt] = useState('');
+  const [suggestLoading, setSuggestLoading] = useState(false);
 
   const [drafts, setDrafts] = useState<DraftMeta[]>([]);
   const [draftName, setDraftName] = useState('');
@@ -717,19 +723,44 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
               setStoryboard(prev => prev.map((c, ci) => ci === i ? { ...c, ...patch } : c));
             }
             async function regenerateScript() {
-              const msg = `The user has reordered and edited the storyboard clips. Here is the updated clip order and per-clip details. Please rewrite the fullScript, voiceoverLines, hookLine, callToAction, and textOverlayPlan to match the new clip order and any edited script lines.`;
+              setIsRegenerating(true); setRegenError('');
               try {
+                const msg = 'The user has reordered and edited the storyboard clips. Please rewrite fullScript, voiceoverLines, hookLine, callToAction, and textOverlayPlan to match the new clip order and any edited script lines.';
                 const res = await fetch('/api/story-refine', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ currentResult: { ...result, storyboard }, message: msg, format, targetDurationSec: targetSec }),
                 });
                 const data = await res.json();
-                if (!data.error) {
-                  setResult(prev => prev ? { ...prev, ...data.updated } : prev);
-                  setEditScript(data.updated?.fullScript ?? '');
-                }
-              } catch {}
+                if (data.error) throw new Error(data.error);
+                setResult(prev => prev ? { ...prev, ...data.updated } : prev);
+                setEditScript(data.updated?.fullScript ?? '');
+                setStoryboard(data.updated?.storyboard ?? storyboard);
+              } catch (e) {
+                setRegenError(String(e));
+              }
+              setIsRegenerating(false);
+            }
+            async function suggestLine(i: number) {
+              if (!suggestPrompt.trim() || suggestLoading) return;
+              setSuggestLoading(true);
+              try {
+                const res = await fetch('/api/story-suggest-line', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    clip: storyboard[i],
+                    instruction: suggestPrompt,
+                    contextScript: result?.fullScript ?? '',
+                    format,
+                  }),
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                updateClip(i, { scriptLine: data.scriptLine ?? storyboard[i].scriptLine, overlayText: data.overlayText ?? storyboard[i].overlayText });
+                setSuggestRow(null); setSuggestPrompt('');
+              } catch { /* silently fail */ }
+              setSuggestLoading(false);
             }
 
             return (
@@ -739,7 +770,12 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
                     <span className="split-col-head">Clips</span>
                     <span className="split-col-head">Script · Overlay</span>
                   </div>
-                  <button className="split-regen-btn" onClick={regenerateScript}>↻ Regenerate Script</button>
+                  <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                    {regenError && <span style={{fontSize:10,color:'var(--red)',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regenError}</span>}
+                    <button className={`split-regen-btn ${isRegenerating ? 'loading' : ''}`} onClick={regenerateScript} disabled={isRegenerating}>
+                      {isRegenerating ? '⏳ Regenerating…' : '↻ Regenerate Script'}
+                    </button>
+                  </div>
                 </div>
                 <div className="split-editor-rows">
                   {storyboard.map((clip, i) => {
@@ -780,15 +816,39 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
                           </div>
                         </div>
 
-                        {/* Right: script + overlay editable */}
+                        {/* Right: script + overlay editable + suggest button */}
                         <div className="split-script-col">
-                          <textarea
-                            className="split-script-ta"
-                            value={clip.scriptLine}
-                            onChange={e => updateClip(i, { scriptLine: e.target.value })}
-                            placeholder="Voiceover line…"
-                            rows={2}
-                          />
+                          <div className="split-script-header">
+                            <textarea
+                              className="split-script-ta"
+                              value={clip.scriptLine}
+                              onChange={e => updateClip(i, { scriptLine: e.target.value })}
+                              placeholder="Voiceover line…"
+                              rows={2}
+                            />
+                            <button
+                              className={`split-suggest-btn ${suggestRow === i ? 'active' : ''}`}
+                              title="AI suggestion for this block"
+                              onClick={() => { setSuggestRow(suggestRow === i ? null : i); setSuggestPrompt(''); }}
+                            >✦</button>
+                          </div>
+                          {/* Inline suggest prompt for this row */}
+                          {suggestRow === i && (
+                            <div className="split-suggest-row">
+                              <input
+                                className="split-suggest-input"
+                                autoFocus
+                                placeholder="e.g. more personal pain story, casual tone, shorter…"
+                                value={suggestPrompt}
+                                onChange={e => setSuggestPrompt(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && suggestLine(i)}
+                                disabled={suggestLoading}
+                              />
+                              <button className="split-suggest-apply" onClick={() => suggestLine(i)} disabled={suggestLoading || !suggestPrompt.trim()}>
+                                {suggestLoading ? '…' : 'Apply'}
+                              </button>
+                            </div>
+                          )}
                           <div className="split-overlay-row">
                             <input className="split-overlay-input" value={clip.overlayText ?? ''} onChange={e => updateClip(i, { overlayText: e.target.value })} placeholder="On-screen text…" />
                             <select className="split-select sm" value={clip.overlayPlacement} onChange={e => updateClip(i, { overlayPlacement: e.target.value as StoryboardClip['overlayPlacement'] })}>
