@@ -186,20 +186,43 @@ function PromptBox() {
   );
 }
 
-// ── Sequential Video Player ──────────────────────────────────────────────────
+// ── Sequential Video Player (Spotify edition) ──────────────────────────────
 interface SeqClip { clip: { role: string; suggestedStartSec: number; suggestedEndSec: number; overlayText?: string }; asset: Asset | undefined; }
 
-function SequentialPlayer({ clips }: { clips: SeqClip[] }) {
+interface SpotifyTrack { name: string; artist: string; previewUrl: string | null; albumArt: string | null; spotifyUrl: string | null; }
+
+function SequentialPlayer({ clips: initialClips, musicQuery }: { clips: SeqClip[]; musicQuery?: string }) {
+  const [clips, setClips] = useState(initialClips);
   const [idx, setIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [spotifyConnected, setSpotifyConnected] = useState<boolean | null>(null);
+  const [spotifyTrack, setSpotifyTrack] = useState<SpotifyTrack | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  // Sync clip list with props (for live edits from parent)
+  useEffect(() => { setClips(initialClips); }, [initialClips]);
 
   const current = clips[idx];
   const streamUrl = current?.asset?.filePath
     ? `/api/stream?path=${encodeURIComponent(current.asset.filePath)}`
     : null;
 
-  // When clip changes, load + play
+  // Fetch Spotify track on mount
+  useEffect(() => {
+    async function fetchTrack() {
+      try {
+        const q = musicQuery ?? 'cinematic ambient';
+        const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        setSpotifyConnected(data.connected);
+        if (data.track) setSpotifyTrack(data.track);
+      } catch { setSpotifyConnected(false); }
+    }
+    fetchTrack();
+  }, [musicQuery]);
+
+  // When clip changes, reload video
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !streamUrl) return;
@@ -208,44 +231,128 @@ function SequentialPlayer({ clips }: { clips: SeqClip[] }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx, streamUrl]);
 
+  function syncAudio(shouldPlay: boolean) {
+    const a = audioRef.current;
+    if (!a) return;
+    if (shouldPlay && a.paused) a.play().catch(() => {});
+    else if (!shouldPlay && !a.paused) a.pause();
+  }
+
   function onEnded() {
-    if (idx < clips.length - 1) {
-      setIdx(i => i + 1);
-    } else {
-      setPlaying(false);
-      setIdx(0);
-    }
+    if (idx < clips.length - 1) { setIdx(i => i + 1); }
+    else { setPlaying(false); syncAudio(false); setIdx(0); }
   }
 
   function togglePlay() {
     const v = videoRef.current;
     if (!v) return;
-    if (v.paused) { v.play().catch(() => {}); setPlaying(true); }
-    else { v.pause(); setPlaying(false); }
+    if (v.paused) { v.play().catch(() => {}); syncAudio(true); setPlaying(true); }
+    else { v.pause(); syncAudio(false); setPlaying(false); }
   }
 
-  if (!streamUrl) return null;
+  function jumpTo(i: number) {
+    setIdx(i); setPlaying(false); syncAudio(false);
+    if (audioRef.current) audioRef.current.currentTime = 0;
+  }
+
+  function removeClip(i: number) {
+    setClips(prev => prev.filter((_, ci) => ci !== i));
+    if (idx >= i && idx > 0) setIdx(j => j - 1);
+  }
+
+  function moveClip(from: number, to: number) {
+    setClips(prev => {
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+  }
+
+  if (!streamUrl || clips.length === 0) return (
+    <div className="preview-no-video">No video clips — add video assets in Step 2.</div>
+  );
 
   return (
     <div className="seq-player">
-      <div className="seq-video-wrap">
-        <video ref={videoRef} className="seq-video" onEnded={onEnded} onClick={togglePlay}
-          src={streamUrl} playsInline controls={false}
-          style={{ cursor: 'pointer' }} />
-        {current.clip.overlayText && (
-          <div className="seq-overlay-text">{current.clip.overlayText}</div>
-        )}
-        {!playing && (
-          <div className="seq-play-btn" onClick={togglePlay}>
-            <svg viewBox="0 0 24 24" fill="currentColor" width="40" height="40"><polygon points="5,3 19,12 5,21"/></svg>
+      {/* Hidden Spotify audio */}
+      {spotifyTrack?.previewUrl && (
+        <audio ref={audioRef} src={spotifyTrack.previewUrl} loop preload="auto" />
+      )}
+
+      <div className="seq-layout">
+        {/* Left: video */}
+        <div className="seq-left">
+          <div className="seq-video-wrap">
+            <video ref={videoRef} className="seq-video" onEnded={onEnded} onClick={togglePlay}
+              src={streamUrl} playsInline controls={false} style={{ cursor: 'pointer' }} />
+            {current?.clip?.overlayText && (
+              <div className="seq-overlay-text">{current.clip.overlayText}</div>
+            )}
+            {!playing && (
+              <div className="seq-play-btn" onClick={togglePlay}>
+                <svg viewBox="0 0 24 24" fill="currentColor" width="40" height="40"><polygon points="5,3 19,12 5,21"/></svg>
+              </div>
+            )}
+            <div className="seq-clip-counter">{idx + 1} / {clips.length} · {current?.clip?.role}</div>
           </div>
-        )}
-        <div className="seq-clip-counter">{idx + 1} / {clips.length} · {current.clip.role}</div>
+
+          {/* Spotify bar */}
+          <div className="spotify-bar">
+            {spotifyConnected === false && (
+              <a href="/api/spotify/login" className="spotify-connect-btn">
+                <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+                Connect Spotify
+              </a>
+            )}
+            {spotifyConnected === true && !spotifyTrack && (
+              <span className="spotify-searching">Searching Spotify…</span>
+            )}
+            {spotifyTrack && (
+              <>
+                {spotifyTrack.albumArt && <img src={spotifyTrack.albumArt} alt="" className="spotify-art" />}
+                <div className="spotify-info">
+                  <span className="spotify-track-name">{spotifyTrack.name}</span>
+                  <span className="spotify-artist">{spotifyTrack.artist}</span>
+                </div>
+                <span className="spotify-badge">30s preview</span>
+                {spotifyTrack.spotifyUrl && (
+                  <a href={spotifyTrack.spotifyUrl} target="_blank" rel="noreferrer" className="spotify-open-link">Open ↗</a>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Right: live-edit clip list */}
+        <div className="seq-edit-panel">
+          <div className="seq-edit-title">Edit Clips</div>
+          {clips.map((c, i) => (
+            <div key={i} className={`seq-edit-row ${i === idx ? 'active' : ''}`} onClick={() => jumpTo(i)}>
+              <div className="seq-edit-num">{i + 1}</div>
+              {c.asset?.thumbPath
+                ? <img src={`/api/thumb?path=${encodeURIComponent(c.asset.thumbPath)}`} alt="" className="seq-edit-thumb" />
+                : <div className="seq-edit-thumb-placeholder">🎬</div>
+              }
+              <div className="seq-edit-info">
+                <div className="seq-edit-role" style={{ color: ROLE_COLORS[c.clip.role] ?? '#aaa' }}>{c.clip.role}</div>
+                <div className="seq-edit-name">{c.asset?.fileName ?? '—'}</div>
+                <div className="seq-edit-dur">{c.clip.suggestedEndSec - c.clip.suggestedStartSec}s</div>
+              </div>
+              <div className="seq-edit-actions">
+                <button className="seq-edit-btn" title="Move up" disabled={i === 0} onClick={e => { e.stopPropagation(); moveClip(i, i - 1); }}>↑</button>
+                <button className="seq-edit-btn" title="Move down" disabled={i === clips.length - 1} onClick={e => { e.stopPropagation(); moveClip(i, i + 1); }}>↓</button>
+                <button className="seq-edit-btn danger" title="Remove" onClick={e => { e.stopPropagation(); removeClip(i); }}>✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
+
       {/* Filmstrip scrubber */}
       <div className="seq-filmstrip">
         {clips.map((c, i) => (
-          <div key={i} className={`seq-frame ${i === idx ? 'active' : ''}`} onClick={() => { setIdx(i); setPlaying(false); }}>
+          <div key={i} className={`seq-frame ${i === idx ? 'active' : ''}`} onClick={() => jumpTo(i)}>
             {c.asset?.thumbPath
               ? <img src={`/api/thumb?path=${encodeURIComponent(c.asset.thumbPath)}`} alt="" className="seq-frame-img" />
               : <div className="seq-frame-placeholder">🎬</div>
@@ -633,7 +740,7 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
 
                 {/* Sequential video player */}
                 {videoClips.length > 0
-                  ? <SequentialPlayer clips={videoClips} />
+                  ? <SequentialPlayer clips={videoClips} musicQuery={result.musicSuggestion ? `${result.musicSuggestion.trendingSongs?.[0]?.title ?? ''} ${result.musicSuggestion.trendingSongs?.[0]?.artist ?? ''}`.trim() || result.musicSuggestion.mood : undefined} />
                   : (
                     <div className="preview-no-video">
                       <span>No video clips selected — add video assets in Step 2 to preview.</span>
