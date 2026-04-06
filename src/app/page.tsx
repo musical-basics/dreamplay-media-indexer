@@ -633,7 +633,28 @@ export default function MediaIndexer() {
   const [copyMsg, setCopyMsg] = useState('');
   const [showStoryBuilder, setShowStoryBuilder] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(180);
+  const [scanStatus, setScanStatus] = useState<{ status: 'idle' | 'scanning'; lastScan: number | null }>({ status: 'idle', lastScan: null });
+  const [scanning, setScanning] = useState(false);
   const lastClickedRef = useRef<string | null>(null);
+
+  // Poll scan status every 10s
+  useEffect(() => {
+    async function pollStatus() {
+      try {
+        const res = await fetch('/api/ingest');
+        const data = await res.json();
+        setScanStatus(data);
+        if (data.status === 'idle' && scanning) {
+          setScanning(false);
+          fetchAssets(); // refresh grid after scan completes
+        }
+      } catch { /* ignore */ }
+    }
+    pollStatus();
+    const id = setInterval(pollStatus, 10_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanning]);
 
   const [filters, setFilters] = useState({
     search: '', finalStatus: '', priority: '', subject: '', handZone: '',
@@ -694,8 +715,18 @@ export default function MediaIndexer() {
     setExporting(false);
   }
 
+  async function handleScanNow() {
+    if (scanning) return;
+    setScanning(true);
+    await fetch('/api/ingest', { method: 'POST' });
+  }
+
   const selectedAssets = assets.filter(a => selected.has(a.id));
   const totalSelectedDuration = selectedAssets.reduce((sum, a) => sum + (a.durationSeconds ?? 0), 0);
+
+  const lastScanLabel = scanStatus.lastScan
+    ? new Date(scanStatus.lastScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null;
 
   return (
     <div className="app">
@@ -704,13 +735,30 @@ export default function MediaIndexer() {
           <div className="logo-mark">🎹</div>
           <div>
             <div className="app-title">DreamPlay Media Indexer</div>
-            <div className="app-subtitle">AI-Powered Asset Search & Timeline Export</div>
+            <div className="app-subtitle">AI-Powered Asset Search &amp; Timeline Export</div>
           </div>
         </div>
         <div className="header-stats">
           <div className="stat-pill"><span className="stat-num">{stats.total.toLocaleString()}</span><span className="stat-label">Total</span></div>
           <div className="stat-pill"><span className="stat-num">{stats.finals.toLocaleString()}</span><span className="stat-label">Finals</span></div>
           <div className="stat-pill high"><span className="stat-num">{stats.highPriority.toLocaleString()}</span><span className="stat-label">Priority</span></div>
+          <div className="scan-controls">
+            {/* Broadcast live indicator */}
+            <div className={`scan-indicator ${scanStatus.status === 'scanning' ? 'scanning' : 'idle'}`} title={scanStatus.status === 'scanning' ? 'Scanning…' : lastScanLabel ? `Last scan ${lastScanLabel}` : 'Idle'}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5.636 5.636a9 9 0 1 0 12.728 0M8.464 8.464a5 5 0 1 0 7.072 0M12 12m0 0v.01" />
+              </svg>
+            </div>
+            {/* Refresh button — minimalist */}
+            <button className="scan-refresh-btn" onClick={handleScanNow} disabled={scanning} title="Scan now">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={scanning ? 'spinning' : ''}>
+                <path d="M21 12a9 9 0 0 0-9-9 9 9 0 0 0-6.36 2.64L3 8" />
+                <path d="M3 3v5h5" />
+                <path d="M3 12a9 9 0 0 0 9 9 9 9 0 0 0 6.36-2.64L21 16" />
+                <path d="M16 16h5v5" />
+              </svg>
+            </button>
+          </div>
         </div>
       </header>
 

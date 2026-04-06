@@ -60,6 +60,28 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .stat-pill.high .stat-num { color: var(--gold2); }
 .stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); margin-top: 1px; }
 
+/* ── Scan Controls ── */
+.scan-controls { display: flex; align-items: center; gap: 8px; margin-left: 4px; }
+
+.scan-indicator {
+  width: 20px; height: 20px; color: var(--text3); display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.scan-indicator svg { width: 100%; height: 100%; }
+.scan-indicator.idle { color: var(--text3); opacity: 0.5; }
+.scan-indicator.scanning { color: var(--gold); opacity: 1; animation: scan-pulse 1.2s ease-in-out infinite; }
+
+.scan-refresh-btn {
+  background: none; border: none; padding: 4px; cursor: pointer;
+  color: var(--text3); display: flex; align-items: center; justify-content: center;
+  border-radius: 4px; transition: color 0.15s, background 0.15s; flex-shrink: 0;
+}
+.scan-refresh-btn svg { width: 16px; height: 16px; }
+.scan-refresh-btn:hover:not(:disabled) { color: var(--text); background: var(--bg4); }
+.scan-refresh-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.scan-refresh-btn .spinning { animation: spin 1s linear infinite; }
+
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes scan-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
 /* ── Body: sidebar + main ── */
 .app-body {
   display: flex;

@@ -195,15 +195,36 @@ async function walkAndIngest(dir: string, processed: { count: number }): Promise
   }
 }
 
+const SCAN_INTERVAL_MS = (() => {
+  const arg = process.argv.find((a) => a.startsWith('--interval='));
+  return arg ? parseInt(arg.split('=')[1], 10) * 1000 : 5 * 60 * 1000; // default 5 min
+})();
+
+// Write scan status file so the API can read it
+function writeScanStatus(status: 'idle' | 'scanning', lastScan?: number) {
+  const statusPath = path.join(process.cwd(), '.indexer-cache', 'scan-status.json');
+  fs.mkdirSync(path.dirname(statusPath), { recursive: true });
+  fs.writeFileSync(statusPath, JSON.stringify({ status, lastScan: lastScan ?? Date.now() }), 'utf8');
+}
+
+async function runFullScan() {
+  writeScanStatus('scanning');
+  const processed = { count: 0 };
+  await walkAndIngest(ASSETS_ROOT, processed);
+  writeScanStatus('idle', Date.now());
+  console.log(`[scan] ✓ Scan complete — ${processed.count} files processed.`);
+}
+
 async function main() {
   console.log(`\n🎹 DreamPlay Media Indexer — Ingestion Agent`);
   console.log(`   Assets root: ${ASSETS_ROOT}`);
   console.log(`   Thumbs dir:  ${THUMBS_DIR}`);
-  console.log(`   Mode: ${watchMode ? 'watch' : 'one-shot'}${finalOnly ? ' [final only]' : ''}`);
+  console.log(`   Mode: ${watchMode ? `watch (rescan every ${SCAN_INTERVAL_MS / 1000}s)` : 'one-shot'}${finalOnly ? ' [final only]' : ''}`);
   console.log('');
 
   if (watchMode) {
-    console.log('[watch] Watching for new files...');
+    // chokidar for instant event-based triggers
+    console.log('[watch] Starting file watcher + periodic re-scan...');
     const watcher = chokidar.watch(ASSETS_ROOT, {
       ignored: [
         /(^|[/\\])\../,
@@ -212,18 +233,26 @@ async function main() {
         /\.indexer-cache/,
       ],
       persistent: true,
-      ignoreInitial: false,
+      ignoreInitial: true,
       awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 500 },
     });
 
     const processed = { count: 0 };
     watcher.on('add', (filePath) => ingestFile(filePath, processed));
     watcher.on('change', (filePath) => ingestFile(filePath, processed));
-    console.log('[watch] Ready. Drop files into DreamPlay Assets to auto-index.');
+
+    // Initial scan on startup
+    await runFullScan();
+
+    // Periodic full re-scan every SCAN_INTERVAL_MS
+    setInterval(async () => {
+      console.log(`[watch] ⏱ Running periodic re-scan (every ${SCAN_INTERVAL_MS / 60000} min)...`);
+      await runFullScan();
+    }, SCAN_INTERVAL_MS);
+
+    console.log(`[watch] Ready. Monitoring ${ASSETS_ROOT}`);
   } else {
-    const processed = { count: 0 };
-    await walkAndIngest(ASSETS_ROOT, processed);
-    console.log(`\n✅ Done. Indexed ${processed.count} files.`);
+    await runFullScan();
     process.exit(0);
   }
 }
