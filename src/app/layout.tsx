@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import './split-editor.css';
 
 export const metadata: Metadata = {
   title: 'DreamPlay Media Indexer',

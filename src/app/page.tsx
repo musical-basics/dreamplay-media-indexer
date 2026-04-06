@@ -388,6 +388,86 @@ function SequentialPlayer({ clips: initialClips, musicQuery }: { clips: SeqClip[
   );
 }
 
+// ── Story AI Chat Panel ───────────────────────────────────────────────────────
+interface ChatMsg { role: 'ai' | 'user'; text: string; }
+
+function StoryAIChat({
+  result, format, targetDurationSec, onResultUpdate,
+}: {
+  result: StoryBuildResponse & { assets: Asset[] };
+  format: string;
+  targetDurationSec: number;
+  onResultUpdate: (r: StoryBuildResponse & { assets: Asset[] }) => void;
+}) {
+  const [msgs, setMsgs] = useState<ChatMsg[]>([
+    { role: 'ai', text: `Here's your ${format.replace('-', ' ')} story! 🎬 Happy with the script? Or tell me what to change — tone, pacing, energy, specific lines, music vibe — anything.` },
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
+
+  async function send() {
+    const msg = input.trim();
+    if (!msg || loading) return;
+    setInput('');
+    setMsgs(prev => [...prev, { role: 'user', text: msg }]);
+    setLoading(true);
+    try {
+      const res = await fetch('/api/story-refine', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentResult: result, message: msg, format, targetDurationSec }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      onResultUpdate({ ...data.updated, assets: result.assets });
+      setMsgs(prev => [...prev, { role: 'ai', text: data.aiReply ?? 'Updated!' }]);
+    } catch (err) {
+      setMsgs(prev => [...prev, { role: 'ai', text: `Hmm, something went wrong: ${String(err)}` }]);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div className="story-chat-panel">
+      <div className="story-chat-title">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+        AI Director
+      </div>
+      <div className="story-chat-messages">
+        {msgs.map((m, i) => (
+          <div key={i} className={`story-chat-msg ${m.role}`}>
+            {m.role === 'ai' && <div className="story-chat-avatar">✦</div>}
+            <div className="story-chat-bubble">{m.text}</div>
+          </div>
+        ))}
+        {loading && (
+          <div className="story-chat-msg ai">
+            <div className="story-chat-avatar">✦</div>
+            <div className="story-chat-bubble story-chat-typing"><span/><span/><span/></div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+      <div className="story-chat-input-row">
+        <input
+          className="story-chat-input"
+          placeholder="Make the hook punchier, change the music to lo-fi…"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
+          disabled={loading}
+        />
+        <button className="story-chat-send" onClick={send} disabled={loading || !input.trim()}>
+          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Story Builder Overlay ────────────────────────────────────────────────────
 interface StoryBuilderProps { onClose: () => void; }
 
@@ -406,6 +486,9 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
   const [result, setResult] = useState<(StoryBuildResponse & { assets: Asset[] }) | null>(null);
   const [storyboard, setStoryboard] = useState<StoryboardClip[]>([]);
   const [error, setError] = useState('');
+  const [editScript, setEditScript] = useState(''); // editable full script (Step 5)
+  const [dragOver2, setDragOver2] = useState<number | null>(null);
+  const dragRef2 = useRef<number | null>(null);
 
   const [drafts, setDrafts] = useState<DraftMeta[]>([]);
   const [draftName, setDraftName] = useState('');
@@ -432,7 +515,7 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
       const res = await fetch('/api/story-build', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setResult(data);
+      setResult(data); setEditScript(data.fullScript ?? '');
       setStoryboard(data.storyboard ?? []);
       setStep(2);
       setDraftName(`${FORMATS.find(f => f.id === format)?.label ?? 'Reel'} — ${new Date().toLocaleDateString()}`);
@@ -621,86 +704,119 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
             </div>
           )}
 
-          {/* ── Step 2: Clips ── */}
-          {step === 2 && result && (
-            <div className="story-step-content">
-              <div className="story-section-title">Selected Clips <span className="story-section-sub">— reorder or swap by revisiting the library</span></div>
-              <div className="story-hook-banner">
-                <span className="story-hook-label">🎯 Hook Line</span>
-                <span className="story-hook-text">{result.hookLine}</span>
-              </div>
-              <div className="storyboard-list">
-                {storyboard.map((clip, idx) => {
-                  const asset = selectedAsset(clip.assetId);
-                  return (
-                    <div key={clip.assetId + idx} className="storyboard-card">
-                      <div className="storyboard-num">{clip.order}</div>
-                      <div className="storyboard-thumb">
-                        {asset?.thumbPath
-                          ? <img src={thumbUrl(asset)} alt={asset.fileName} className="storyboard-thumb-img" />
-                          : <div className="storyboard-thumb-placeholder">{asset?.mediaType === 'video' ? '🎬' : '🖼'}</div>}
-                        <div className="storyboard-role-badge" style={{ background: ROLE_COLORS[clip.role] ?? '#666' }}>{clip.role}</div>
-                      </div>
-                      <div className="storyboard-info">
-                        <div className="storyboard-filename">{asset?.fileName ?? clip.assetId}</div>
-                        <div className="storyboard-timing">{clip.suggestedStartSec}s – {clip.suggestedEndSec}s · {clip.suggestedEndSec - clip.suggestedStartSec}s</div>
-                        <div className="storyboard-script">"{clip.scriptLine}"</div>
-                        {clip.overlayText && (
-                          <div className="storyboard-overlay">
-                            <span className="storyboard-overlay-badge">{clip.overlayStyle}</span> "{clip.overlayText}" <span className="storyboard-overlay-pos">— {clip.overlayPlacement}</span>
-                          </div>
-                        )}
-                        <div className="storyboard-transition">→ {clip.transitionNote}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {/* ── Step 2+3: Split Editor (Clips left | Script right) ── */}
+          {(step === 2 || step === 3) && result && (() => {
+            function moveRow(from: number, to: number) {
+              if (from === to) return;
+              const next = [...storyboard];
+              const [item] = next.splice(from, 1);
+              next.splice(to, 0, item);
+              setStoryboard(next);
+            }
+            function updateClip(i: number, patch: Partial<StoryboardClip>) {
+              setStoryboard(prev => prev.map((c, ci) => ci === i ? { ...c, ...patch } : c));
+            }
+            async function regenerateScript() {
+              const msg = `The user has reordered and edited the storyboard clips. Here is the updated clip order and per-clip details. Please rewrite the fullScript, voiceoverLines, hookLine, callToAction, and textOverlayPlan to match the new clip order and any edited script lines.`;
+              try {
+                const res = await fetch('/api/story-refine', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ currentResult: { ...result, storyboard }, message: msg, format, targetDurationSec: targetSec }),
+                });
+                const data = await res.json();
+                if (!data.error) {
+                  setResult(prev => prev ? { ...prev, ...data.updated } : prev);
+                  setEditScript(data.updated?.fullScript ?? '');
+                }
+              } catch {}
+            }
 
-          {/* ── Step 3: Story / Script ── */}
-          {step === 3 && result && (
-            <div className="story-step-content">
-              <div className="story-section-title">Script & Text Overlays</div>
-              <div className="story-script-block">
-                <div className="story-script-label">Full Voiceover Script</div>
-                <div className="story-script-text">{result.fullScript}</div>
-              </div>
-              <div className="story-script-label" style={{ marginTop: 20 }}>Line by Line</div>
-              <div className="story-voiceover-list">
-                {result.voiceoverLines?.map((line, i) => (
-                  <div key={i} className="story-vo-row">
-                    <span className="story-vo-num">{i + 1}</span>
-                    <span className="story-vo-line">{line}</span>
+            return (
+              <div className="split-editor-shell">
+                <div className="split-editor-toolbar">
+                  <div className="split-editor-title">
+                    <span className="split-col-head">Clips</span>
+                    <span className="split-col-head">Script · Overlay</span>
                   </div>
-                ))}
-              </div>
-              <div className="story-script-label" style={{ marginTop: 20 }}>Text Overlay Plan</div>
-              <div className="story-overlay-list">
-                {result.textOverlayPlan?.map((t, i) => (
-                  <div key={i} className="story-overlay-row">
-                    <span className="story-overlay-clip">Clip {t.clipOrder}</span>
-                    <span className="story-overlay-text">"{t.text}"</span>
-                    <span className="story-overlay-meta">{t.style} · {t.placement} · {t.timing}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="story-cta-block">
-                <span className="story-cta-label">CTA →</span>
-                <span className="story-cta-text">{result.callToAction}</span>
-              </div>
-              {result.directorNotes && (
-                <div className="story-director-notes">
-                  <span className="story-director-label">🎬 Director Notes</span>
-                  <span className="story-director-text">{result.directorNotes}</span>
+                  <button className="split-regen-btn" onClick={regenerateScript}>↻ Regenerate Script</button>
                 </div>
-              )}
-            </div>
-          )}
+                <div className="split-editor-rows">
+                  {storyboard.map((clip, i) => {
+                    const asset = selectedAsset(clip.assetId);
+                    return (
+                      <div
+                        key={clip.assetId + i}
+                        className={`split-row ${dragOver2 === i ? 'drag-over2' : ''}`}
+                        draggable
+                        onDragStart={() => { dragRef2.current = i; }}
+                        onDragOver={e => { e.preventDefault(); setDragOver2(i); }}
+                        onDragLeave={() => setDragOver2(null)}
+                        onDrop={e => { e.preventDefault(); setDragOver2(null); if (dragRef2.current !== null) moveRow(dragRef2.current, i); dragRef2.current = null; }}
+                        onDragEnd={() => { dragRef2.current = null; setDragOver2(null); }}
+                      >
+                        {/* Left: clip info */}
+                        <div className="split-clip-col">
+                          <div className="split-grip">⠿</div>
+                          <div className="split-num">{i + 1}</div>
+                          <div className="split-thumb">
+                            {asset?.thumbPath
+                              ? <img src={thumbUrl(asset)} alt="" className="split-thumb-img" />
+                              : <div className="split-thumb-ph">{asset?.mediaType === 'video' ? '🎬' : '🖼'}</div>}
+                          </div>
+                          <div className="split-clip-details">
+                            <div className="split-filename">{asset?.fileName ?? clip.assetId}</div>
+                            <div className="split-clip-meta">
+                              <select className="split-select" value={clip.role} onChange={e => updateClip(i, { role: e.target.value as StoryboardClip['role'] })}>
+                                {['hook','proof','demo','emotion','cta'].map(r => <option key={r} value={r}>{r}</option>)}
+                              </select>
+                              <input className="split-time-input" type="number" min={0} step={0.5} value={clip.suggestedStartSec}
+                                onChange={e => updateClip(i, { suggestedStartSec: parseFloat(e.target.value) })} />
+                              <span className="split-dash">–</span>
+                              <input className="split-time-input" type="number" min={0} step={0.5} value={clip.suggestedEndSec}
+                                onChange={e => updateClip(i, { suggestedEndSec: parseFloat(e.target.value) })} />
+                              <span className="split-dur">({clip.suggestedEndSec - clip.suggestedStartSec}s)</span>
+                            </div>
+                          </div>
+                        </div>
 
-          {/* ── Step 4: Music ── */}
+                        {/* Right: script + overlay editable */}
+                        <div className="split-script-col">
+                          <textarea
+                            className="split-script-ta"
+                            value={clip.scriptLine}
+                            onChange={e => updateClip(i, { scriptLine: e.target.value })}
+                            placeholder="Voiceover line…"
+                            rows={2}
+                          />
+                          <div className="split-overlay-row">
+                            <input className="split-overlay-input" value={clip.overlayText ?? ''} onChange={e => updateClip(i, { overlayText: e.target.value })} placeholder="On-screen text…" />
+                            <select className="split-select sm" value={clip.overlayPlacement} onChange={e => updateClip(i, { overlayPlacement: e.target.value as StoryboardClip['overlayPlacement'] })}>
+                              {['top','center','bottom'].map(p => <option key={p} value={p}>{p}</option>)}
+                            </select>
+                            <select className="split-select sm" value={clip.overlayStyle} onChange={e => updateClip(i, { overlayStyle: e.target.value as StoryboardClip['overlayStyle'] })}>
+                              {['headline','caption','stat','none'].map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* AI Chat always visible on right of steps 2+3 */}
+                <StoryAIChat
+                  result={result}
+                  format={format}
+                  targetDurationSec={targetSec}
+                  onResultUpdate={r => { setResult(r); setEditScript(r.fullScript ?? ''); setStoryboard(r.storyboard ?? storyboard); }}
+                />
+              </div>
+            );
+          })()}
+
+          {/* ── Step 4: Music (with AI chat) ── */}
           {step === 4 && result?.musicSuggestion && (
+
             <div className="story-step-content">
               <div className="story-section-title">Music Direction</div>
               {(() => {
@@ -771,10 +887,15 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
                   )
                 }
 
-                {/* Full script preview */}
+                {/* Full script preview — editable */}
                 <div className="story-preview-script">
-                  <div className="story-script-label">📝 Full Script</div>
-                  <div className="story-script-text">{result.fullScript}</div>
+                  <div className="story-script-label">📝 Full Script <span style={{opacity:0.5,fontWeight:400}}>· click to edit</span></div>
+                  <textarea
+                    className="story-script-ta"
+                    value={editScript}
+                    onChange={e => setEditScript(e.target.value)}
+                    rows={6}
+                  />
                 </div>
 
                 {/* Music quick-ref */}
