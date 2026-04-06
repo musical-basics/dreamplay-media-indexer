@@ -261,6 +261,7 @@ function SequentialPlayer({ clips: initialClips, musicQuery }: { clips: SeqClip[
   }
 
   function moveClip(from: number, to: number) {
+    if (from === to) return;
     setClips(prev => {
       const next = [...prev];
       const [item] = next.splice(from, 1);
@@ -268,6 +269,9 @@ function SequentialPlayer({ clips: initialClips, musicQuery }: { clips: SeqClip[
       return next;
     });
   }
+
+  const dragRef = useRef<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
 
   if (!streamUrl || clips.length === 0) return (
     <div className="preview-no-video">No video clips — add video assets in Step 2.</div>
@@ -326,9 +330,20 @@ function SequentialPlayer({ clips: initialClips, musicQuery }: { clips: SeqClip[
 
         {/* Right: live-edit clip list */}
         <div className="seq-edit-panel">
-          <div className="seq-edit-title">Edit Clips</div>
+          <div className="seq-edit-title">Edit Clips <span style={{fontWeight:400,opacity:0.5}}>· drag to reorder</span></div>
           {clips.map((c, i) => (
-            <div key={i} className={`seq-edit-row ${i === idx ? 'active' : ''}`} onClick={() => jumpTo(i)}>
+            <div
+              key={i}
+              className={`seq-edit-row ${i === idx ? 'active' : ''} ${dragOver === i ? 'drag-over' : ''}`}
+              onClick={() => jumpTo(i)}
+              draggable
+              onDragStart={() => { dragRef.current = i; }}
+              onDragOver={e => { e.preventDefault(); setDragOver(i); }}
+              onDragLeave={() => setDragOver(null)}
+              onDrop={e => { e.preventDefault(); setDragOver(null); if (dragRef.current !== null) moveClip(dragRef.current, i); dragRef.current = null; }}
+              onDragEnd={() => { dragRef.current = null; setDragOver(null); }}
+            >
+              <div className="seq-edit-grip">⋮</div>
               <div className="seq-edit-num">{i + 1}</div>
               {c.asset?.thumbPath
                 ? <img src={`/api/thumb?path=${encodeURIComponent(c.asset.thumbPath)}`} alt="" className="seq-edit-thumb" />
@@ -340,8 +355,6 @@ function SequentialPlayer({ clips: initialClips, musicQuery }: { clips: SeqClip[
                 <div className="seq-edit-dur">{c.clip.suggestedEndSec - c.clip.suggestedStartSec}s</div>
               </div>
               <div className="seq-edit-actions">
-                <button className="seq-edit-btn" title="Move up" disabled={i === 0} onClick={e => { e.stopPropagation(); moveClip(i, i - 1); }}>↑</button>
-                <button className="seq-edit-btn" title="Move down" disabled={i === clips.length - 1} onClick={e => { e.stopPropagation(); moveClip(i, i + 1); }}>↓</button>
                 <button className="seq-edit-btn danger" title="Remove" onClick={e => { e.stopPropagation(); removeClip(i); }}>✕</button>
               </div>
             </div>
