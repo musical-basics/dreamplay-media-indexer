@@ -173,26 +173,48 @@ Return ONLY this JSON structure:
 }`;
 
     const ai = getAI();
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.7,
-        maxOutputTokens: 8192,
-      },
-    });
 
-    const raw = response.text?.trim() ?? '';
-    const cleaned = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim();
-    
+    async function callGemini(promptText: string): Promise<string> {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [{ role: 'user', parts: [{ text: promptText }] }],
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION,
+          temperature: 0.6,
+          maxOutputTokens: 8192,
+          responseMimeType: 'application/json',  // Forces Gemini to return clean JSON
+        },
+      });
+      return response.text?.trim() ?? '';
+    }
+
+    function extractJSON(raw: string): StoryBuildResponse {
+      // Strip markdown fences if present
+      let text = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim();
+      // Find outermost JSON object
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      if (start !== -1 && end !== -1 && end > start) {
+        text = text.slice(start, end + 1);
+      }
+      return JSON.parse(text) as StoryBuildResponse;
+    }
+
     let parsed: StoryBuildResponse;
     try {
-      parsed = JSON.parse(cleaned) as StoryBuildResponse;
-    } catch (parseErr) {
-      console.error('[story-build] JSON parse failed. Raw response (first 500 chars):', cleaned.slice(0, 500));
-      console.error('[story-build] Parse error:', parseErr);
-      throw new Error(`AI returned malformed JSON: ${String(parseErr)}. Try again — this is usually a transient issue.`);
+      const raw = await callGemini(prompt);
+      parsed = extractJSON(raw);
+    } catch (firstErr) {
+      console.warn('[story-build] First attempt failed, retrying once…', String(firstErr));
+      // Retry with a slightly simplified prompt to reduce chance of truncation
+      try {
+        const retryPrompt = prompt + '\n\nIMPORTANT: Respond with ONLY valid JSON. No explanations, no markdown. Start with { and end with }.';
+        const raw2 = await callGemini(retryPrompt);
+        parsed = extractJSON(raw2);
+      } catch (retryErr) {
+        console.error('[story-build] Retry also failed:', String(retryErr));
+        throw new Error(`Story generation failed after retry. Please try again. (${String(retryErr)})`);
+      }
     }
 
     // Attach full asset records for selected clips
