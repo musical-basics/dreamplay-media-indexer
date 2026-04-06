@@ -362,10 +362,20 @@ function SequentialPlayer({ clips: initialClips, musicQuery }: { clips: SeqClip[
         </div>
       </div>
 
-      {/* Filmstrip scrubber */}
+      {/* Filmstrip scrubber — draggable */}
       <div className="seq-filmstrip">
         {clips.map((c, i) => (
-          <div key={i} className={`seq-frame ${i === idx ? 'active' : ''}`} onClick={() => jumpTo(i)}>
+          <div
+            key={i}
+            className={`seq-frame ${i === idx ? 'active' : ''} ${dragOver === i ? 'drag-over-frame' : ''}`}
+            onClick={() => jumpTo(i)}
+            draggable
+            onDragStart={() => { dragRef.current = i; }}
+            onDragOver={e => { e.preventDefault(); setDragOver(i); }}
+            onDragLeave={() => setDragOver(null)}
+            onDrop={e => { e.preventDefault(); setDragOver(null); if (dragRef.current !== null) moveClip(dragRef.current, i); dragRef.current = null; }}
+            onDragEnd={() => { dragRef.current = null; setDragOver(null); }}
+          >
             {c.asset?.thumbPath
               ? <img src={`/api/thumb?path=${encodeURIComponent(c.asset.thumbPath)}`} alt="" className="seq-frame-img" />
               : <div className="seq-frame-placeholder">🎬</div>
