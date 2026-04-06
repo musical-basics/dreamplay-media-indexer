@@ -765,9 +765,6 @@ export default function MediaIndexer() {
       <div className="app-body">
         <aside className="sidebar">
           <div className="filter-section">
-            <input className="search-input" placeholder="Search descriptions, keywords, filenames…" value={filters.search} onChange={e => setFilters(prev => ({ ...prev, search: e.target.value }))} />
-          </div>
-          <div className="filter-section">
             <div className="filter-label">Quick Filters</div>
             <div className="chip-row">
               <button className={`chip ${filters.priority === 'high' ? 'active' : ''}`} onClick={() => setFilter('priority', 'high')}>⚡ Priority</button>
@@ -775,6 +772,9 @@ export default function MediaIndexer() {
               <button className={`chip ${filters.mediaType === 'video' ? 'active' : ''}`} onClick={() => setFilter('mediaType', 'video')}>🎬 Video</button>
               <button className={`chip ${filters.mediaType === 'image' ? 'active' : ''}`} onClick={() => setFilter('mediaType', 'image')}>🖼 Photo</button>
             </div>
+          </div>
+          <div className="filter-section">
+            <input className="search-input" placeholder="Search descriptions, keywords, filenames…" value={filters.search} onChange={e => setFilters(prev => ({ ...prev, search: e.target.value }))} />
           </div>
           <div className="filter-section">
             <div className="filter-label">Color Label</div>
@@ -904,34 +904,82 @@ export default function MediaIndexer() {
 
       {detail && (
         <div className="modal-overlay" onClick={() => setDetail(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <button className="modal-close" onClick={() => setDetail(null)}>✕</button>
-            {detail.thumbPath && <img src={thumbUrl(detail)} alt={detail.fileName} className="modal-thumb" />}
-            <div className="modal-body">
-              <div className="modal-title">{detail.fileName}</div>
-              <div className="modal-path">{detail.filePath}</div>
-              <div className="modal-desc">{detail.aiDescription}</div>
-              <div className="modal-grid">
-                <div className="modal-row"><span>Status</span><span className={`status-badge ${detail.finalStatus}`}>{detail.finalStatus}</span></div>
-                <div className="modal-row"><span>Priority</span><span>{detail.priority}</span></div>
-                <div className="modal-row"><span>Subject</span><span>{detail.subject}</span></div>
-                <div className="modal-row"><span>Hand Zone</span><span>{detail.handZone ?? '—'}</span></div>
-                <div className="modal-row"><span>DS Model</span><span>{detail.dsModel ?? '—'}</span></div>
-                <div className="modal-row"><span>Purpose</span><span>{detail.purpose}</span></div>
-                <div className="modal-row"><span>Campaign</span><span>{detail.campaign}</span></div>
-                <div className="modal-row"><span>Shot Type</span><span>{detail.shotType}</span></div>
-                <div className="modal-row"><span>Duration</span><span>{formatDuration(detail.durationSeconds)}</span></div>
-                <div className="modal-row"><span>Resolution</span><span>{detail.width && detail.height ? `${detail.width}×${detail.height}` : '—'}</span></div>
-                <div className="modal-row"><span>FPS</span><span>{detail.fps?.toFixed(2) ?? '—'}</span></div>
-                <div className="modal-row"><span>Codec</span><span>{detail.codec ?? '—'}</span></div>
-                <div className="modal-row"><span>File Size</span><span>{formatBytes(detail.fileSize)}</span></div>
-                <div className="modal-row"><span>Color Grade</span><span>{detail.colorGrade || '—'}</span></div>
-                <div className="modal-row"><span>Mood</span><span>{detail.mood || '—'}</span></div>
+          <div className="preview-panel" onClick={e => e.stopPropagation()}>
+
+            {/* Left — large thumbnail */}
+            <div className="preview-media">
+              {detail.thumbPath
+                ? <img src={thumbUrl(detail)} alt={detail.fileName} className="preview-thumb" />
+                : <div className="preview-thumb-placeholder">{detail.mediaType === 'video' ? '🎬' : '🖼'}</div>
+              }
+              {detail.mediaType === 'video' && detail.durationSeconds && (
+                <div className="preview-duration">{formatDuration(detail.durationSeconds)}</div>
+              )}
+              {detail.finalStatus === 'final' && <div className="preview-final-badge">FINAL</div>}
+            </div>
+
+            {/* Right — info */}
+            <div className="preview-info">
+              <div className="preview-header">
+                <div className="preview-filename">{detail.fileName}</div>
+                <button className="modal-close" onClick={() => setDetail(null)}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
               </div>
-              <div className="modal-keywords">
-                {(() => { try { return JSON.parse(detail.aiKeywords) as string[]; } catch { return []; } })().map((k, i) => (<span key={i} className="tag">{k}</span>))}
+
+              <div className="preview-desc">{detail.aiDescription || '—'}</div>
+
+              <div className="preview-meta-grid">
+                {[
+                  ['Status', <span key="s" className={`status-badge ${detail.finalStatus}`}>{detail.finalStatus}</span>],
+                  ['Priority', detail.priority],
+                  ['Subject', detail.subject],
+                  ['DS Model', detail.dsModel ?? '—'],
+                  ['Shot Type', detail.shotType],
+                  ['Orientation', detail.orientation ?? '—'],
+                  ['Duration', formatDuration(detail.durationSeconds)],
+                  ['Resolution', detail.width && detail.height ? `${detail.width}×${detail.height}` : '—'],
+                  ['FPS', detail.fps?.toFixed(2) ?? '—'],
+                  ['Codec', detail.codec ?? '—'],
+                  ['File Size', formatBytes(detail.fileSize)],
+                  ['Campaign', detail.campaign ?? '—'],
+                  ['Mood', detail.mood || '—'],
+                  ['Color Grade', detail.colorGrade || '—'],
+                ].map(([label, val]) => (
+                  <div key={String(label)} className="preview-meta-row">
+                    <span className="preview-meta-label">{label}</span>
+                    <span className="preview-meta-val">{val}</span>
+                  </div>
+                ))}
               </div>
-              <button className="btn-copy-path" onClick={() => { navigator.clipboard.writeText(detail.filePath); setCopyMsg('Copied!'); setTimeout(() => setCopyMsg(''), 1500); }}>{copyMsg || '📋 Copy File Path'}</button>
+
+              <div className="preview-keywords">
+                {(() => { try { return JSON.parse(detail.aiKeywords) as string[]; } catch { return []; } })()
+                  .map((k, i) => <span key={i} className="tag">{k}</span>)}
+              </div>
+
+              <div className="preview-path-row">
+                <span className="preview-path">{detail.filePath}</span>
+                <button className="preview-icon-btn" title="Copy path" onClick={() => { navigator.clipboard.writeText(detail.filePath); setCopyMsg('Copied!'); setTimeout(() => setCopyMsg(''), 1500); }}>
+                  {copyMsg === 'Copied!'
+                    ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M20 6L9 17l-5-5"/></svg>
+                    : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  }
+                </button>
+              </div>
+
+              <div className="preview-actions">
+                <button className="preview-reveal-btn" onClick={async () => {
+                  await fetch('/api/reveal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: detail.filePath }) });
+                }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  Reveal in Finder
+                </button>
+                <button className="preview-select-btn" onClick={() => { setSelected(prev => { const n = new Set(prev); n.add(detail.id); return n; }); setDetail(null); }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+                  Add to Selection
+                </button>
+              </div>
             </div>
           </div>
         </div>
