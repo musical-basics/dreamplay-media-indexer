@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { queryAssets } from '@/lib/db';
 import { AssetRecord } from '@/lib/taxonomy';
+import fs from 'fs';
+import path from 'path';
 
 let _ai: GoogleGenAI | null = null;
 function getAI(): GoogleGenAI {
@@ -67,6 +69,7 @@ export interface StoryBuildRequest {
   shotTypes?: string[];
   moods?: string[];
   customNotes?: string;
+  styleProfileId?: string; // reference style to emulate
 }
 
 const FORMAT_CONTEXT: Record<string, string> = {
@@ -85,7 +88,21 @@ Always return valid JSON only. No markdown, no explanation outside the JSON.`;
 export async function POST(req: NextRequest) {
   try {
     const body: StoryBuildRequest = await req.json();
-    const { intent, format, targetDurationSec, dsModel, campaign, subjects, shotTypes, moods, customNotes } = body;
+    const { intent, format, targetDurationSec, dsModel, campaign, subjects, shotTypes, moods, customNotes, styleProfileId } = body;
+
+    // Load style profile if provided
+    let styleGuide = '';
+    if (styleProfileId) {
+      try {
+        const sp = path.join(process.cwd(), 'data', 'styles', `${styleProfileId}.json`);
+        if (fs.existsSync(sp)) {
+          const profile = JSON.parse(fs.readFileSync(sp, 'utf-8'));
+          if (profile.status === 'ready' && profile.styleSummary) {
+            styleGuide = `\n\n${profile.styleSummary}\n`;
+          }
+        }
+      } catch { /* ignore */ }
+    }
 
     // Fetch best assets from DB
     const { assets: allAssets } = queryAssets({
@@ -119,7 +136,7 @@ export async function POST(req: NextRequest) {
     const formatDesc = FORMAT_CONTEXT[format] || FORMAT_CONTEXT['custom'];
 
     const prompt = `You are building a short-form video for DreamPlay Pianos.
-
+${styleGuide}
 FORMAT: ${formatDesc}
 TARGET DURATION: ${targetDurationSec} seconds
 INTENT: ${intent || 'Showcase the DreamPlay piano and drive interest'}

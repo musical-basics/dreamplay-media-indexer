@@ -388,6 +388,196 @@ function SequentialPlayer({ clips: initialClips, musicQuery }: { clips: SeqClip[
   );
 }
 
+// ── Style Library types ───────────────────────────────────────────────────────
+interface StyleAnalysis {
+  hookStyle: string; pacing: string; shotTypes: string[];
+  textOverlayStyle: string; toneEnergy: string; ctaStyle: string;
+  musicStyle: string; keyInsights: string[]; recommendedFor: string;
+}
+interface StyleProfile {
+  id: string; name: string; createdAt: string;
+  sourceType: 'file' | 'url'; sourceName: string;
+  status: 'analyzing' | 'ready' | 'error'; errorMsg?: string;
+  analysis?: StyleAnalysis; styleSummary?: string;
+}
+
+// ── Style Library Panel ───────────────────────────────────────────────────────
+function StyleLibraryPanel({ onClose, onSelect }: { onClose: () => void; onSelect: (p: StyleProfile) => void }) {
+  const [profiles, setProfiles] = useState<StyleProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [urlInput, setUrlInput] = useState('');
+  const [nameInput, setNameInput] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { fetchProfiles(); }, []);
+
+  // Poll analyzing profiles
+  useEffect(() => {
+    const analyzing = profiles.filter(p => p.status === 'analyzing');
+    if (analyzing.length === 0) return;
+    const t = setTimeout(() => fetchProfiles(), 4000);
+    return () => clearTimeout(t);
+  }, [profiles]);
+
+  async function fetchProfiles() {
+    try {
+      const res = await fetch('/api/style-library');
+      const data = await res.json();
+      setProfiles(data.profiles ?? []);
+    } catch {}
+    setLoading(false);
+  }
+
+  async function addFromUrl() {
+    if (!urlInput.trim()) return;
+    setAdding(true);
+    const name = nameInput.trim() || urlInput.slice(0, 40);
+    try {
+      const res = await fetch('/api/style-library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, sourceType: 'url', sourceName: urlInput }),
+      });
+      const { profile } = await res.json();
+      setProfiles(prev => [profile, ...prev]);
+      setUrlInput(''); setNameInput('');
+      // Kick off analysis
+      await fetch('/api/style-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: profile.id, url: urlInput }),
+      });
+      fetchProfiles();
+    } catch {}
+    setAdding(false);
+  }
+
+  async function addFromFile(file: File) {
+    setAdding(true);
+    const name = nameInput.trim() || file.name.replace(/\.[^.]+$/, '');
+    try {
+      // Upload file
+      const fd = new FormData();
+      fd.append('file', file);
+      const uploadRes = await fetch('/api/style-upload', { method: 'POST', body: fd });
+      const { filePath, fileName } = await uploadRes.json();
+      // Create profile
+      const profRes = await fetch('/api/style-library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, sourceType: 'file', sourceName: fileName }),
+      });
+      const { profile } = await profRes.json();
+      setProfiles(prev => [profile, ...prev]);
+      setNameInput('');
+      // Kick off analysis
+      await fetch('/api/style-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: profile.id, filePath }),
+      });
+      fetchProfiles();
+    } catch {}
+    setAdding(false);
+  }
+
+  async function deleteProfile(id: string) {
+    await fetch(`/api/style-library?id=${id}`, { method: 'DELETE' });
+    setProfiles(prev => prev.filter(p => p.id !== id));
+  }
+
+  return (
+    <div className="sl-overlay" onClick={e => { if ((e.target as HTMLElement).classList.contains('sl-overlay')) onClose(); }}>
+      <div className="sl-panel">
+        <div className="sl-header">
+          <div className="sl-header-left">
+            <span className="sl-icon">🎞</span>
+            <div>
+              <div className="sl-title">Style Library</div>
+              <div className="sl-subtitle">Upload reference videos to learn their editing style, pacing, and hooks</div>
+            </div>
+          </div>
+          <button className="sl-close" onClick={onClose}>✕</button>
+        </div>
+
+        {/* Add new style */}
+        <div className="sl-add-section">
+          <input
+            className="sl-name-input"
+            placeholder="Name this style (e.g. MrBeast Hook, Apple Launch)"
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+          />
+          <div className="sl-add-row">
+            {/* URL input */}
+            <input
+              className="sl-url-input"
+              placeholder="Paste YouTube URL or direct video link…"
+              value={urlInput}
+              onChange={e => setUrlInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addFromUrl()}
+            />
+            <button className="sl-add-btn" onClick={addFromUrl} disabled={adding || !urlInput.trim()}>
+              {adding ? '…' : 'Analyze'}
+            </button>
+            <span className="sl-or">or</span>
+            {/* File drop */}
+            <div
+              className={`sl-drop-zone ${dragOver ? 'dragover' : ''}`}
+              onClick={() => fileRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => {
+                e.preventDefault(); setDragOver(false);
+                const f = e.dataTransfer.files[0];
+                if (f) addFromFile(f);
+              }}
+            >
+              <span>Drop video or click</span>
+              <input ref={fileRef} type="file" accept="video/*" style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) addFromFile(f); }} />
+            </div>
+          </div>
+        </div>
+
+        {/* Style cards grid */}
+        <div className="sl-grid">
+          {loading ? (
+            <div className="sl-empty">Loading…</div>
+          ) : profiles.length === 0 ? (
+            <div className="sl-empty">No styles yet. Add a reference video above to get started.</div>
+          ) : profiles.map(p => (
+            <div key={p.id} className={`sl-card ${p.status}`}>
+              <div className="sl-card-header">
+                <div className="sl-card-name">{p.name}</div>
+                <div className="sl-card-badge">{p.status === 'analyzing' ? '⏳ Analyzing' : p.status === 'error' ? '❌ Error' : '✓ Ready'}</div>
+              </div>
+              <div className="sl-card-source">{p.sourceType === 'url' ? '🔗' : '📁'} {p.sourceName}</div>
+              {p.status === 'ready' && p.analysis && (
+                <div className="sl-card-traits">
+                  <div className="sl-trait"><span className="sl-trait-label">Hook</span>{p.analysis.hookStyle}</div>
+                  <div className="sl-trait"><span className="sl-trait-label">Pace</span>{p.analysis.pacing}</div>
+                  <div className="sl-trait"><span className="sl-trait-label">Energy</span>{p.analysis.toneEnergy}</div>
+                  <div className="sl-shots">{(p.analysis.shotTypes ?? []).map(s => <span key={s} className="sl-shot-chip">{s}</span>)}</div>
+                </div>
+              )}
+              {p.status === 'error' && <div className="sl-card-error">{p.errorMsg}</div>}
+              <div className="sl-card-actions">
+                {p.status === 'ready' && (
+                  <button className="sl-use-btn" onClick={() => { onSelect(p); onClose(); }}>Use This Style</button>
+                )}
+                <button className="sl-del-btn" onClick={() => deleteProfile(p.id)}>✕</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Clip Lightbox ─────────────────────────────────────────────────────────────
 function ClipLightbox({
   clips, activeIdx, onClose, onDelete, onMove,
@@ -578,6 +768,8 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
   const [suggestPrompt, setSuggestPrompt] = useState('');
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [selectedStyle, setSelectedStyle] = useState<StyleProfile | null>(null);
+  const [showStyleLibrary, setShowStyleLibrary] = useState(false);
 
   const [drafts, setDrafts] = useState<DraftMeta[]>([]);
   const [draftName, setDraftName] = useState('');
@@ -599,7 +791,7 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
 
   async function handleBuild() {
     setIsBuilding(true); setError(''); setResult(null);
-    const body: StoryBuildRequest = { intent, format: format as StoryBuildRequest['format'], targetDurationSec: targetSec, dsModel: dsModel || undefined, campaign: campaign || undefined, subjects, moods, customNotes };
+    const body: StoryBuildRequest = { intent, format: format as StoryBuildRequest['format'], targetDurationSec: targetSec, dsModel: dsModel || undefined, campaign: campaign || undefined, subjects, moods, customNotes, styleProfileId: selectedStyle?.id };
     try {
       const res = await fetch('/api/story-build', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
@@ -651,6 +843,12 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
   return (
     <div className="story-overlay" onClick={e => { if ((e.target as HTMLElement).classList.contains('story-overlay')) onClose(); }}>
       {/* Clip lightbox */}
+      {showStyleLibrary && (
+        <StyleLibraryPanel
+          onClose={() => setShowStyleLibrary(false)}
+          onSelect={p => { setSelectedStyle(p); setShowStyleLibrary(false); }}
+        />
+      )}
       {lightboxIdx !== null && result && (
         <ClipLightbox
           clips={storyboard.map(clip => ({ clip, asset: selectedAsset(clip.assetId) }))}
@@ -797,6 +995,29 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
               <div className="story-field">
                 <div className="story-field-label">Additional Notes</div>
                 <textarea className="story-intent-input" placeholder="Anything else for the AI director…" value={customNotes} onChange={e => setCustomNotes(e.target.value)} rows={2} />
+              </div>
+
+              {/* Reference Style */}
+              <div className="story-field">
+                <div className="story-field-label">Reference Style <span style={{ fontWeight: 400, opacity: 0.5 }}>(optional)</span></div>
+                {selectedStyle ? (
+                  <div className="sl-selected-card">
+                    <div className="sl-selected-info">
+                      <span className="sl-selected-name">{selectedStyle.name}</span>
+                      {selectedStyle.analysis && (
+                        <span className="sl-selected-meta">{selectedStyle.analysis.pacing} · {selectedStyle.analysis.toneEnergy}</span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="sl-change-btn" onClick={() => setShowStyleLibrary(true)}>Change</button>
+                      <button className="sl-clear-btn" onClick={() => setSelectedStyle(null)}>✕</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button className="sl-browse-btn" onClick={() => setShowStyleLibrary(true)}>
+                    🎞 Browse Style Library
+                  </button>
+                )}
               </div>
 
               {error && <div className="prompt-error">⚠ {error}</div>}
