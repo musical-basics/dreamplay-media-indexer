@@ -54,6 +54,26 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 .app-title { font-weight: 600; font-size: 12px; color: var(--text); letter-spacing: 0; }
 .app-subtitle { font-size: 10px; color: var(--text3); }
 
+/* Prominent header search */
+.header-search {
+  flex: 1; max-width: 520px;
+  background: #ffffff; color: #111;
+  border: none; border-radius: 5px;
+  padding: 7px 14px; font-size: 13px; font-family: inherit;
+  outline: none; transition: box-shadow 0.15s;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.15);
+}
+.header-search:focus { box-shadow: 0 0 0 2px var(--accent); }
+.header-search::placeholder { color: #888; }
+
+/* Sidebar drag handle */
+.sidebar-resize-handle {
+  width: 4px; cursor: col-resize; flex-shrink: 0;
+  background: var(--border); transition: background 0.15s;
+  position: relative; z-index: 5;
+}
+.sidebar-resize-handle:hover { background: var(--accent); }
+
 .header-stats { display: flex; gap: 6px; }
 .stat-pill {
   display: flex; align-items: center; gap: 5px;

@@ -702,7 +702,29 @@ export default function MediaIndexer() {
   const [zoomLevel, setZoomLevel] = useState(180);
   const [scanStatus, setScanStatus] = useState<{ status: 'idle' | 'scanning'; lastScan: number | null }>({ status: 'idle', lastScan: null });
   const [scanning, setScanning] = useState(false);
+  const [sidebarW, setSidebarW] = useState(210);
+  const isDraggingRef = useRef(false);
   const lastClickedRef = useRef<string | null>(null);
+
+  // Draggable sidebar resizer
+  function startSidebarDrag(e: React.MouseEvent) {
+    e.preventDefault();
+    isDraggingRef.current = true;
+    const startX = e.clientX;
+    const startW = sidebarW;
+    function onMove(ev: MouseEvent) {
+      if (!isDraggingRef.current) return;
+      const next = Math.max(140, Math.min(400, startW + ev.clientX - startX));
+      setSidebarW(next);
+    }
+    function onUp() {
+      isDraggingRef.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
 
   // Poll scan status every 10s
   useEffect(() => {
@@ -745,7 +767,7 @@ export default function MediaIndexer() {
 
   useEffect(() => { fetchAssets(); }, [fetchAssets]);
 
-  // Keyboard shortcuts: Space → preview last selected, Escape → close preview
+  // Keyboard shortcuts: Space → preview last selected, Escape → close, Cmd+0 → reset
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -755,12 +777,18 @@ export default function MediaIndexer() {
         const id = lastClickedRef.current;
         if (id) {
           setDetail(prev => {
-            if (prev) return null; // toggle off if already open
+            if (prev) return null;
             return assets.find(a => a.id === id) ?? null;
           });
         }
       }
       if (e.code === 'Escape') setDetail(null);
+      // Cmd+0 → reset all panel sizes and zoom
+      if ((e.metaKey || e.ctrlKey) && e.key === '0') {
+        e.preventDefault();
+        setSidebarW(210);
+        setZoomLevel(180);
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -823,9 +851,15 @@ export default function MediaIndexer() {
           <div className="logo-mark">🎹</div>
           <div>
             <div className="app-title">DreamPlay Media Indexer</div>
-            <div className="app-subtitle">AI-Powered Asset Search &amp; Timeline Export</div>
           </div>
         </div>
+        {/* Prominent center search bar */}
+        <input
+          className="header-search"
+          placeholder="Search assets, keywords, descriptions…"
+          value={filters.search}
+          onChange={e => setFilters(prev => ({ ...prev, search: e.target.value }))}
+        />
         <div className="header-stats">
           <div className="stat-pill"><span className="stat-num">{stats.total.toLocaleString()}</span><span className="stat-label">Total</span></div>
           <div className="stat-pill"><span className="stat-num">{stats.finals.toLocaleString()}</span><span className="stat-label">Finals</span></div>
@@ -851,7 +885,7 @@ export default function MediaIndexer() {
       </header>
 
       <div className="app-body">
-        <aside className="sidebar">
+        <aside className="sidebar" style={{ width: sidebarW, minWidth: sidebarW }}>
           <div className="filter-section">
             <div className="filter-label">Quick Filters</div>
             <div className="chip-row">
@@ -862,7 +896,7 @@ export default function MediaIndexer() {
             </div>
           </div>
           <div className="filter-section">
-            <input className="search-input" placeholder="Search descriptions, keywords, filenames…" value={filters.search} onChange={e => setFilters(prev => ({ ...prev, search: e.target.value }))} />
+            {/* Search duplicate removed — now in header */}
           </div>
           <div className="filter-section">
             <div className="filter-label">Color Label</div>
@@ -914,7 +948,7 @@ export default function MediaIndexer() {
             <button className="reset-btn" onClick={() => setFilters({ search: '', finalStatus: '', priority: '', subject: '', handZone: '', dsModel: '', purpose: '', campaign: '', shotType: '', colorLabel: '', mediaType: '', orientation: '' })}>✕ Clear All Filters</button>
           )}
         </aside>
-
+        <div className="sidebar-resize-handle" onMouseDown={startSidebarDrag} title="Drag to resize" />
         <main className="main-content">
           <PromptBox />
           <div className="grid-header">
