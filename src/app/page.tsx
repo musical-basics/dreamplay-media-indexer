@@ -388,6 +388,88 @@ function SequentialPlayer({ clips: initialClips, musicQuery }: { clips: SeqClip[
   );
 }
 
+// ── Clip Lightbox ─────────────────────────────────────────────────────────────
+function ClipLightbox({
+  clips, activeIdx, onClose, onDelete, onMove,
+}: {
+  clips: { clip: StoryboardClip; asset: Asset | undefined }[];
+  activeIdx: number;
+  onClose: () => void;
+  onDelete: (i: number) => void;
+  onMove: (from: number, to: number) => void;
+}) {
+  const [idx, setIdx] = useState(activeIdx);
+  const total = clips.length;
+  const cur = clips[idx];
+  const streamUrl = cur?.asset?.filePath ? `/api/stream?path=${encodeURIComponent(cur.asset.filePath)}` : null;
+  const isVideo = cur?.asset?.mediaType === 'video';
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft') setIdx(i => Math.max(0, i - 1));
+      if (e.key === 'ArrowRight') setIdx(i => Math.min(total - 1, i + 1));
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, total]);
+
+  return (
+    <div className="clb-overlay" onClick={e => { if ((e.target as HTMLElement).classList.contains('clb-overlay')) onClose(); }}>
+      <div className="clb-modal">
+        {/* Header */}
+        <div className="clb-header">
+          <div className="clb-header-info">
+            <span className="clb-num">{idx + 1} / {total}</span>
+            <span className="clb-role" style={{ background: ROLE_COLORS[cur?.clip?.role ?? ''] ?? '#555' }}>{cur?.clip?.role}</span>
+            <span className="clb-filename">{cur?.asset?.fileName ?? '—'}</span>
+            <span className="clb-timing">{cur?.clip?.suggestedStartSec}s – {cur?.clip?.suggestedEndSec}s</span>
+          </div>
+          <div className="clb-header-actions">
+            <button className="clb-btn move" title="Move left" disabled={idx === 0} onClick={() => { onMove(idx, idx - 1); setIdx(i => i - 1); }}>← Move</button>
+            <button className="clb-btn move" title="Move right" disabled={idx === total - 1} onClick={() => { onMove(idx, idx + 1); setIdx(i => i + 1); }}>Move →</button>
+            <button className="clb-btn danger" title="Remove clip" onClick={() => { onDelete(idx); if (idx >= total - 1) setIdx(i => Math.max(0, i - 1)); }}>✕ Remove</button>
+            <button className="clb-btn close" onClick={onClose}>✕</button>
+          </div>
+        </div>
+
+        {/* Media */}
+        <div className="clb-media">
+          {!cur?.asset ? (
+            <div className="clb-no-media">No asset</div>
+          ) : isVideo && streamUrl ? (
+            <video key={streamUrl} src={streamUrl} className="clb-video" controls playsInline />
+          ) : cur?.asset?.thumbPath ? (
+            <img src={`/api/thumb?path=${encodeURIComponent(cur.asset.thumbPath)}`} alt="" className="clb-image" />
+          ) : (
+            <div className="clb-no-media">No preview</div>
+          )}
+        </div>
+
+        {/* Nav */}
+        <div className="clb-nav">
+          <button className="clb-nav-btn" disabled={idx === 0} onClick={() => setIdx(i => i - 1)}>‹ Prev</button>
+          {/* Script line */}
+          <div className="clb-script">&ldquo;{cur?.clip?.scriptLine}&rdquo;</div>
+          <button className="clb-nav-btn" disabled={idx === total - 1} onClick={() => setIdx(i => i + 1)}>Next ›</button>
+        </div>
+
+        {/* Filmstrip */}
+        <div className="clb-filmstrip">
+          {clips.map((c, i) => (
+            <div key={i} className={`clb-frame ${i === idx ? 'active' : ''}`} onClick={() => setIdx(i)}>
+              {c.asset?.thumbPath
+                ? <img src={`/api/thumb?path=${encodeURIComponent(c.asset.thumbPath)}`} alt="" />
+                : <div className="clb-frame-ph">{c.asset?.mediaType === 'video' ? '🎬' : '🖼'}</div>}
+              <div className="clb-frame-role" style={{ background: ROLE_COLORS[c.clip.role] ?? '#555' }}>{c.clip.role}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Story AI Chat Panel ───────────────────────────────────────────────────────
 interface ChatMsg { role: 'ai' | 'user'; text: string; }
 
@@ -495,6 +577,7 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
   const [suggestRow, setSuggestRow] = useState<number | null>(null);
   const [suggestPrompt, setSuggestPrompt] = useState('');
   const [suggestLoading, setSuggestLoading] = useState(false);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
   const [drafts, setDrafts] = useState<DraftMeta[]>([]);
   const [draftName, setDraftName] = useState('');
@@ -567,6 +650,26 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
 
   return (
     <div className="story-overlay" onClick={e => { if ((e.target as HTMLElement).classList.contains('story-overlay')) onClose(); }}>
+      {/* Clip lightbox */}
+      {lightboxIdx !== null && result && (
+        <ClipLightbox
+          clips={storyboard.map(clip => ({ clip, asset: selectedAsset(clip.assetId) }))}
+          activeIdx={lightboxIdx}
+          onClose={() => setLightboxIdx(null)}
+          onDelete={i => {
+            setStoryboard(prev => prev.filter((_, ci) => ci !== i));
+            if (i >= storyboard.length - 1) setLightboxIdx(j => j !== null ? Math.max(0, j - 1) : null);
+          }}
+          onMove={(from, to) => {
+            setStoryboard(prev => {
+              const next = [...prev];
+              const [item] = next.splice(from, 1);
+              next.splice(to, 0, item);
+              return next;
+            });
+          }}
+        />
+      )}
       <div className="story-panel">
         {/* Header */}
         <div className="story-header">
@@ -795,10 +898,11 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
                         <div className="split-clip-col">
                           <div className="split-grip">⠿</div>
                           <div className="split-num">{i + 1}</div>
-                          <div className="split-thumb">
+                          <div className="split-thumb" onClick={() => setLightboxIdx(i)} style={{cursor:'pointer'}} title="Click to preview">
                             {asset?.thumbPath
                               ? <img src={thumbUrl(asset)} alt="" className="split-thumb-img" />
                               : <div className="split-thumb-ph">{asset?.mediaType === 'video' ? '🎬' : '🖼'}</div>}
+                            <div className="split-thumb-play">{asset?.mediaType === 'video' ? '▶' : '⤢'}</div>
                           </div>
                           <div className="split-clip-details">
                             <div className="split-filename">{asset?.fileName ?? clip.assetId}</div>

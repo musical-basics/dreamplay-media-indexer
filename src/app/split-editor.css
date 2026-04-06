@@ -59,6 +59,83 @@
 .split-suggest-apply:hover:not(:disabled) { background: var(--accent2); }
 .split-suggest-apply:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* Thumb hover play icon */
+.split-thumb { position: relative; }
+.split-thumb-play {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.45); color: #fff; font-size: 16px; opacity: 0;
+  transition: opacity 0.15s; pointer-events: none;
+}
+.split-thumb:hover .split-thumb-play { opacity: 1; }
+
+/* ── Clip Lightbox ─────────────────────────────────────────── */
+.clb-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,0.88); backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+}
+.clb-modal {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 6px; display: flex; flex-direction: column;
+  width: min(92vw, 960px); max-height: 92vh; overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.7);
+}
+.clb-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; gap: 12px;
+}
+.clb-header-info { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.clb-num { font-size: 10px; color: var(--text3); }
+.clb-role { font-size: 8px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; color: #fff; }
+.clb-filename { font-size: 11px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clb-timing { font-size: 10px; color: var(--text3); white-space: nowrap; }
+.clb-header-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.clb-btn {
+  background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
+  border-radius: 3px; padding: 4px 10px; font-size: 10px; cursor: pointer; font-family: inherit;
+  transition: background 0.15s; white-space: nowrap;
+}
+.clb-btn:hover:not(:disabled) { background: var(--bg4); }
+.clb-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.clb-btn.danger { color: var(--red); }
+.clb-btn.danger:hover:not(:disabled) { background: rgba(224,82,82,0.1); border-color: rgba(224,82,82,0.3); }
+.clb-btn.close { color: var(--text3); padding: 4px 8px; }
+.clb-btn.move { color: var(--accent); }
+.clb-btn.move:hover:not(:disabled) { background: rgba(74,158,255,0.1); border-color: rgba(74,158,255,0.3); }
+.clb-media {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  background: #000; overflow: hidden; min-height: 200px; max-height: 56vh;
+}
+.clb-video { width: 100%; height: 100%; max-height: 56vh; object-fit: contain; display: block; }
+.clb-image { width: 100%; height: 100%; max-height: 56vh; object-fit: contain; display: block; }
+.clb-no-media { color: var(--text3); font-size: 12px; }
+.clb-nav {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+  border-top: 1px solid var(--border); flex-shrink: 0;
+}
+.clb-nav-btn {
+  background: var(--bg3); border: 1px solid var(--border); color: var(--text2);
+  border-radius: 3px; padding: 5px 12px; font-size: 11px; cursor: pointer; font-family: inherit;
+  flex-shrink: 0; transition: background 0.15s;
+}
+.clb-nav-btn:hover:not(:disabled) { background: var(--bg4); }
+.clb-nav-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+.clb-script { flex: 1; font-size: 12px; color: var(--text2); text-align: center; font-style: italic; }
+.clb-filmstrip {
+  display: flex; gap: 4px; padding: 8px 12px; overflow-x: auto; flex-shrink: 0;
+  border-top: 1px solid var(--border); background: var(--bg3);
+}
+.clb-frame {
+  position: relative; flex-shrink: 0; width: 72px; height: 46px;
+  border-radius: 3px; overflow: hidden; cursor: pointer;
+  border: 2px solid transparent; transition: border-color 0.12s;
+}
+.clb-frame.active { border-color: var(--accent); }
+.clb-frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.clb-frame-ph { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: var(--bg4); font-size: 14px; }
+.clb-frame-role { position: absolute; bottom: 2px; left: 2px; font-size: 6px; font-weight: 700; color: #fff; padding: 1px 3px; border-radius: 2px; text-transform: uppercase; }
+
+
 .split-editor-rows {
   grid-column: 1 / 2;
   overflow-y: auto; display: flex; flex-direction: column;
