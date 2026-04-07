@@ -70,6 +70,7 @@ export interface StoryBuildRequest {
   moods?: string[];
   customNotes?: string;
   styleProfileId?: string; // reference style to emulate
+  aiModel?: string;        // gemini model to use for generation
 }
 
 const FORMAT_CONTEXT: Record<string, string> = {
@@ -88,7 +89,8 @@ Always return valid JSON only. No markdown, no explanation outside the JSON.`;
 export async function POST(req: NextRequest) {
   try {
     const body: StoryBuildRequest = await req.json();
-    const { intent, format, targetDurationSec, dsModel, campaign, subjects, shotTypes, moods, customNotes, styleProfileId } = body;
+    const { intent, format, targetDurationSec, dsModel, campaign, subjects, shotTypes, moods, customNotes, styleProfileId, aiModel } = body;
+    const model = aiModel || 'gemini-2.5-flash';
 
     // Load style profile if provided
     let styleGuide = '';
@@ -193,7 +195,7 @@ Return ONLY this JSON structure:
 
     async function callGemini(promptText: string): Promise<string> {
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model,
         contents: [{ role: 'user', parts: [{ text: promptText }] }],
         config: {
           systemInstruction: SYSTEM_INSTRUCTION,

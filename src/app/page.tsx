@@ -753,6 +753,7 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
   const [subjects, setSubjects] = useState<string[]>([]);
   const [moods, setMoods] = useState<string[]>([]);
   const [customNotes, setCustomNotes] = useState('');
+  const [aiModel, setAiModel] = useState('gemini-2.5-flash');
 
   const [isBuilding, setIsBuilding] = useState(false);
   const [result, setResult] = useState<(StoryBuildResponse & { assets: Asset[] }) | null>(null);
@@ -791,7 +792,7 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
 
   async function handleBuild() {
     setIsBuilding(true); setError(''); setResult(null);
-    const body: StoryBuildRequest = { intent, format: format as StoryBuildRequest['format'], targetDurationSec: targetSec, dsModel: dsModel || undefined, campaign: campaign || undefined, subjects, moods, customNotes, styleProfileId: selectedStyle?.id };
+    const body: StoryBuildRequest = { intent, format: format as StoryBuildRequest['format'], targetDurationSec: targetSec, dsModel: dsModel || undefined, campaign: campaign || undefined, subjects, moods, customNotes, styleProfileId: selectedStyle?.id, aiModel };
     try {
       const res = await fetch('/api/story-build', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
@@ -1018,6 +1019,28 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
                     🎞 Browse Style Library
                   </button>
                 )}
+              </div>
+
+              {/* AI Model selector */}
+              <div className="story-field">
+                <div className="story-field-label">AI Model</div>
+                <div className="story-chip-row">
+                  {[
+                    { id: 'gemini-2.5-flash', label: '⚡ Flash 2.5', desc: 'Fast · Default' },
+                    { id: 'gemini-2.5-pro',   label: '🧠 Pro 2.5',   desc: 'Best quality · Slower' },
+                    { id: 'gemini-2.0-flash', label: '💨 Flash 2.0',  desc: 'Lightweight' },
+                  ].map(m => (
+                    <button
+                      key={m.id}
+                      className={`story-chip model-chip ${aiModel === m.id ? 'active' : ''}`}
+                      onClick={() => setAiModel(m.id)}
+                      title={m.desc}
+                    >
+                      {m.label}
+                      {aiModel === m.id && <span className="model-chip-desc">{m.desc}</span>}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {error && <div className="prompt-error">⚠ {error}</div>}
