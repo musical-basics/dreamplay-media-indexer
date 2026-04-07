@@ -753,8 +753,9 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
   const [subjects, setSubjects] = useState<string[]>([]);
   const [moods, setMoods] = useState<string[]>([]);
   const [customNotes, setCustomNotes] = useState('');
-  const [aiModel, setAiModel] = useState('gemini-2.5-flash');
+  const [aiModel, setAiModel] = useState('gemini-3.1-pro-preview');
   const [videoGenModel, setVideoGenModel] = useState<'veo-003' | 'runway-gen4'>('veo-003');
+  const [ttsModel, setTtsModel] = useState('gemini-2.5-flash-preview-tts');
   const [generatingRow, setGeneratingRow] = useState<number | null>(null);
   const [genError, setGenError] = useState('');
 
@@ -1060,6 +1061,22 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
                           onClick={() => setVideoGenModel(m.id as 'veo-003' | 'runway-gen4')} title={m.desc}>
                           {m.label}
                           {videoGenModel === m.id && <span className="model-chip-desc">{m.desc}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Voiceover TTS */}
+                  <div>
+                    <div className="model-section-label">Voiceover / TTS <span style={{opacity:0.5}}>(Gemini 3.1 TTS not yet available — 2.5 TTS used)</span></div>
+                    <div className="story-chip-row">
+                      {[
+                        { id: 'gemini-2.5-flash-preview-tts', label: '🎙 Flash TTS', desc: 'Fast voiceover · Low latency' },
+                        { id: 'gemini-2.5-pro-preview-tts',   label: '🔊 Pro TTS',   desc: 'Highest quality voice' },
+                      ].map(m => (
+                        <button key={m.id} className={`story-chip model-chip tts-model ${ttsModel === m.id ? 'active' : ''}`}
+                          onClick={() => setTtsModel(m.id)} title={m.desc}>
+                          {m.label}
+                          {ttsModel === m.id && <span className="model-chip-desc">{m.desc}</span>}
                         </button>
                       ))}
                     </div>

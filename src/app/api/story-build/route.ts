@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
   try {
     const body: StoryBuildRequest = await req.json();
     const { intent, format, targetDurationSec, dsModel, campaign, subjects, shotTypes, moods, customNotes, styleProfileId, aiModel } = body;
-    const model = aiModel || 'gemini-2.5-flash';
+    const model = aiModel || 'gemini-3.1-pro-preview';
 
     // Load style profile if provided
     let styleGuide = '';
