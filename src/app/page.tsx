@@ -754,6 +754,9 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
   const [moods, setMoods] = useState<string[]>([]);
   const [customNotes, setCustomNotes] = useState('');
   const [aiModel, setAiModel] = useState('gemini-2.5-flash');
+  const [videoGenModel, setVideoGenModel] = useState<'veo-003' | 'runway-gen4'>('veo-003');
+  const [generatingRow, setGeneratingRow] = useState<number | null>(null);
+  const [genError, setGenError] = useState('');
 
   const [isBuilding, setIsBuilding] = useState(false);
   const [result, setResult] = useState<(StoryBuildResponse & { assets: Asset[] }) | null>(null);
@@ -1023,23 +1026,41 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
 
               {/* AI Model selector */}
               <div className="story-field">
-                <div className="story-field-label">AI Model</div>
-                <div className="story-chip-row">
-                  {[
-                    { id: 'gemini-2.5-flash', label: '⚡ Flash 2.5', desc: 'Fast · Default' },
-                    { id: 'gemini-2.5-pro',   label: '🧠 Pro 2.5',   desc: 'Best quality · Slower' },
-                    { id: 'gemini-2.0-flash', label: '💨 Flash 2.0',  desc: 'Lightweight' },
-                  ].map(m => (
-                    <button
-                      key={m.id}
-                      className={`story-chip model-chip ${aiModel === m.id ? 'active' : ''}`}
-                      onClick={() => setAiModel(m.id)}
-                      title={m.desc}
-                    >
-                      {m.label}
-                      {aiModel === m.id && <span className="model-chip-desc">{m.desc}</span>}
-                    </button>
-                  ))}
+                <div className="story-field-label">AI Models</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {/* Script generation */}
+                  <div>
+                    <div className="model-section-label">Script Generation</div>
+                    <div className="story-chip-row">
+                      {[
+                        { id: 'gemini-2.5-flash', label: '⚡ Flash 2.5', desc: 'Fast · Default' },
+                        { id: 'gemini-2.5-pro',   label: '🧠 Pro 2.5',   desc: 'Best quality · Slower' },
+                        { id: 'gemini-2.0-flash', label: '💨 Flash 2.0',  desc: 'Lightweight' },
+                      ].map(m => (
+                        <button key={m.id} className={`story-chip model-chip ${aiModel === m.id ? 'active' : ''}`}
+                          onClick={() => setAiModel(m.id)} title={m.desc}>
+                          {m.label}
+                          {aiModel === m.id && <span className="model-chip-desc">{m.desc}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Video generation */}
+                  <div>
+                    <div className="model-section-label">Video Generation — for generating new clips</div>
+                    <div className="story-chip-row">
+                      {[
+                        { id: 'veo-003',       label: '🎞 Veo 3',        desc: 'Google · Same API key · Best quality' },
+                        { id: 'runway-gen4',   label: '✈️ Runway Gen-4', desc: 'Requires RUNWAY_API_KEY' },
+                      ].map(m => (
+                        <button key={m.id} className={`story-chip model-chip video-model ${videoGenModel === m.id ? 'active' : ''}`}
+                          onClick={() => setVideoGenModel(m.id as 'veo-003' | 'runway-gen4')} title={m.desc}>
+                          {m.label}
+                          {videoGenModel === m.id && <span className="model-chip-desc">{m.desc}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1109,6 +1130,31 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
               } catch { /* silently fail */ }
               setSuggestLoading(false);
             }
+            async function generateClip(i: number) {
+              if (generatingRow !== null) return;
+              setGeneratingRow(i); setGenError('');
+              try {
+                const clip = storyboard[i];
+                const res = await fetch('/api/video-generate', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    model: videoGenModel,
+                    prompt: clip.scriptLine || clip.overlayText || `${clip.role} shot for DreamPlay Pianos`,
+                    clipRole: clip.role,
+                    aspectRatio: (format === 'instagram-reel' || format === 'tiktok' || format === 'youtube-short') ? '9:16' : '16:9',
+                    durationSeconds: Math.round(clip.suggestedEndSec - clip.suggestedStartSec) || 6,
+                  }),
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                // Show success — user can re-ingest or use the file path
+                setGenError(`✓ Generated: ${data.files?.[0]?.split('/').pop() ?? 'clip saved'}`);
+              } catch (e) {
+                setGenError(String(e));
+              }
+              setGeneratingRow(null);
+            }
 
             return (
               <div className="split-editor-shell">
@@ -1118,6 +1164,8 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
                     <span className="split-col-head">Script · Overlay</span>
                   </div>
                   <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                    {genError && <span className={`split-gen-status ${genError.startsWith('✓') ? 'ok' : 'err'}`}>{genError}</span>}
+                    <span className="split-vgen-label">Video: <strong>{videoGenModel}</strong></span>
                     {regenError && <span style={{fontSize:10,color:'var(--red)',maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{regenError}</span>}
                     <button className={`split-regen-btn ${isRegenerating ? 'loading' : ''}`} onClick={regenerateScript} disabled={isRegenerating}>
                       {isRegenerating ? '⏳ Regenerating…' : '↻ Regenerate Script'}
@@ -1161,6 +1209,15 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
                                 onChange={e => updateClip(i, { suggestedEndSec: parseFloat(e.target.value) })} />
                               <span className="split-dur">({clip.suggestedEndSec - clip.suggestedStartSec}s)</span>
                             </div>
+                            {/* Generate with video AI */}
+                            <button
+                              className={`split-gen-clip-btn ${generatingRow === i ? 'loading' : ''}`}
+                              title={`Generate new clip with ${videoGenModel}`}
+                              disabled={generatingRow !== null}
+                              onClick={() => generateClip(i)}
+                            >
+                              {generatingRow === i ? '⏳ Generating…' : `🎥 Generate`}
+                            </button>
                           </div>
                         </div>
 
