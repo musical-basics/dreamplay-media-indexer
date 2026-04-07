@@ -1,0 +1,38 @@
+{
+  "output": {
+    "filePath": "repomix-output.xml",
+    "style": "xml",
+    "headerText": "DreamPlay Media Indexer — Source Code",
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "topFilesLength": 15,
+    "showLineNumbers": true,
+    "copyToClipboard": false
+  },
+  "include": [
+    "src/**/*",
+    "package.json",
+    "next.config.ts",
+    "tsconfig.json",
+    ".env.example",
+    "README.md",
+    "AGENTS.md"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "node_modules/**",
+      ".next/**",
+      ".git/**",
+      "data/**",
+      "public/**",
+      "pnpm-lock.yaml",
+      "*.lock",
+      "repomix*",
+      "*.xml",
+      ".env.local",
+      ".indexer-cache/**"
+    ]
+  }
+}
