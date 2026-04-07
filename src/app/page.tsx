@@ -1033,9 +1033,12 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
                     <div className="model-section-label">Script Generation</div>
                     <div className="story-chip-row">
                       {[
-                        { id: 'gemini-2.5-flash', label: '⚡ Flash 2.5', desc: 'Fast · Default' },
-                        { id: 'gemini-2.5-pro',   label: '🧠 Pro 2.5',   desc: 'Best quality · Slower' },
-                        { id: 'gemini-2.0-flash', label: '💨 Flash 2.0',  desc: 'Lightweight' },
+                        { id: 'gemini-3.1-pro-preview',        label: '🌟 Gemini 3.1 Pro',   desc: 'Newest · Best quality' },
+                        { id: 'gemini-3.1-flash-lite-preview',  label: '⚡ Gemini 3.1 Flash', desc: 'New · Fast' },
+                        { id: 'gemini-3-pro-preview',           label: '🧠 Gemini 3 Pro',     desc: 'High quality' },
+                        { id: 'gemini-2.5-pro',                 label: '💎 2.5 Pro',           desc: 'Stable · Reliable' },
+                        { id: 'gemini-2.5-flash',               label: '🔵 2.5 Flash',         desc: 'Default · Balanced' },
+                        { id: 'gemini-2.5-flash-lite',          label: '💨 2.5 Lite',          desc: 'Fastest' },
                       ].map(m => (
                         <button key={m.id} className={`story-chip model-chip ${aiModel === m.id ? 'active' : ''}`}
                           onClick={() => setAiModel(m.id)} title={m.desc}>
