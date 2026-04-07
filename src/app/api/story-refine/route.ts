@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { StoryBuildResponse } from '../story-build/route';
+import { DREAMPLAY_BRAND_RULES } from '@/lib/brand-config';
 
 let _ai: GoogleGenAI | null = null;
 function getAI(): GoogleGenAI {
@@ -68,7 +69,14 @@ Keep everything else the same (especially assetId values). Return ONLY the full 
       model: 'gemini-2.5-flash',
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
-        systemInstruction: 'You are an elite video director. Return only valid JSON. No markdown.',
+        systemInstruction: `You are an elite video director. Return only valid JSON. No markdown.
+
+${DREAMPLAY_BRAND_RULES}
+
+VOICEOVER SCRIPT RULES — MANDATORY:
+- Never describe piano keys as evenly spaced or all the same width.
+- Never invent product specifications not grounded in DS5.5/DS6.0/DS6.5 facts.
+- Write scripts in natural spoken English only — no bullet points, no stage directions.`,
         temperature: 0.6,
         maxOutputTokens: 8192,
         responseMimeType: 'application/json',

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from '@google/genai';
 import { queryAssets } from '@/lib/db';
 import { AssetRecord } from '@/lib/taxonomy';
+import { DREAMPLAY_BRAND_RULES } from '@/lib/brand-config';
 import fs from 'fs';
 import path from 'path';
 
@@ -84,7 +85,16 @@ const FORMAT_CONTEXT: Record<string, string> = {
 const SYSTEM_INSTRUCTION = `You are an elite short-form video director and editor for DreamPlay Pianos.
 You specialize in high-retention social media content that stops the scroll and drives conversions.
 You understand music, emotion, pacing, psychology, and the piano enthusiast audience.
-Always return valid JSON only. No markdown, no explanation outside the JSON.`;
+Always return valid JSON only. No markdown, no explanation outside the JSON.
+
+${DREAMPLAY_BRAND_RULES}
+
+VOICEOVER SCRIPT RULES — MANDATORY:
+- Never describe piano keys as evenly spaced or all the same width.
+- Never suggest camera angles that are physically impossible (e.g. camera inside the piano).
+- Never invent product specifications not grounded in the DS5.5/DS6.0/DS6.5 facts above.
+- Write scripts in natural spoken English only — no bullet points, no stage directions.
+- Every script line must be speakable in the clip's allotted time (approx 2–3 words per second).`;
 
 export async function POST(req: NextRequest) {
   try {
@@ -270,7 +280,35 @@ Return ONLY this JSON structure:
       }
     }
 
-    // Attach full asset records for selected clips
+    // ── Post-processing validation ──────────────────────────────────────────
+    // 1. Build lookup of valid asset IDs from the scored pool
+    const validAssetMap = new Map(scored.map(s => [s.asset.id, s.asset]));
+    const validAssetIds = scored.map(s => s.asset.id);
+
+    // 2. Cross-check every storyboard clip — fix hallucinated assetIds
+    if (Array.isArray(parsed.storyboard)) {
+      parsed.storyboard = parsed.storyboard.map((clip, idx) => {
+        if (validAssetMap.has(clip.assetId)) return clip; // valid — keep
+        // Hallucinated ID — fall back to the nth asset in the scored pool (wrap around)
+        const fallbackId = validAssetIds[idx % validAssetIds.length];
+        console.warn(`[story-build] Hallucinated assetId "${clip.assetId}" → replaced with "${fallbackId}"`);
+        return { ...clip, assetId: fallbackId };
+      });
+    }
+
+    // 3. Fix selectedAssetIds to match the corrected storyboard
+    parsed.selectedAssetIds = [...new Set(
+      (parsed.storyboard ?? []).map((c: StoryboardClip) => c.assetId)
+    )];
+
+    // 4. Recalculate totalEstimatedDuration from actual clip timings (never trust LLM math)
+    const calculatedDuration = (parsed.storyboard ?? []).reduce((sum, clip) => {
+      const dur = (clip.suggestedEndSec ?? 0) - (clip.suggestedStartSec ?? 0);
+      return sum + Math.max(0, dur);
+    }, 0);
+    parsed.totalEstimatedDuration = Math.round(calculatedDuration * 10) / 10;
+
+    // 5. Attach full asset records for selected clips
     const selectedIds = new Set(parsed.selectedAssetIds);
     const selectedAssets = scored.filter(s => selectedIds.has(s.asset.id)).map(s => s.asset);
 

@@ -55,6 +55,48 @@ const DEFAULT_TAGS: AITags = {
   aiKeywords: [],
 };
 
+/**
+ * Sleep for the given number of milliseconds.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Call a Gemini API function with exponential backoff retry on rate-limit (429) or 503 errors.
+ * Retries up to maxRetries times with jittered exponential back-off.
+ */
+async function withBackoff<T>(
+  fn: () => Promise<T>,
+  label: string,
+  maxRetries = 4,
+): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      lastErr = err;
+      const msg = String(err);
+      const isRetryable =
+        msg.includes('429') ||
+        msg.includes('503') ||
+        msg.includes('RESOURCE_EXHAUSTED') ||
+        msg.includes('Too Many Requests') ||
+        msg.includes('Service Unavailable');
+
+      if (!isRetryable || attempt === maxRetries) break;
+
+      const baseDelay = 2000 * Math.pow(2, attempt); // 2s, 4s, 8s, 16s
+      const jitter = Math.random() * 1000;
+      const delay = Math.min(baseDelay + jitter, 30_000); // cap at 30s
+      console.warn(`[Gemini] ${label}: attempt ${attempt + 1} → rate limited. Retrying in ${Math.round(delay / 1000)}s…`);
+      await sleep(delay);
+    }
+  }
+  throw lastErr;
+}
+
 export async function analyzeAssetWithGemini(
   filePath: string,
   mediaType: 'video' | 'image',
@@ -96,20 +138,25 @@ export async function analyzeAssetWithGemini(
 
 Return ONLY the JSON object, nothing else.`;
 
+  const label = path.basename(filePath);
+
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { inlineData: { data: base64, mimeType } },
-            { text: prompt },
-          ],
-        },
-      ],
-      config: { systemInstruction: SYSTEM_INSTRUCTION },
-    });
+    const response = await withBackoff(() =>
+      ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { inlineData: { data: base64, mimeType } },
+              { text: prompt },
+            ],
+          },
+        ],
+        config: { systemInstruction: SYSTEM_INSTRUCTION },
+      }),
+      label,
+    );
 
     const text = response.text?.trim() ?? '';
     // Strip markdown code blocks if Gemini wraps it
@@ -128,7 +175,7 @@ Return ONLY the JSON object, nothing else.`;
       aiKeywords: Array.isArray(parsed.aiKeywords) ? parsed.aiKeywords : [],
     };
   } catch (err) {
-    console.error(`[Gemini] Error analyzing ${path.basename(filePath)}:`, err);
-    return { ...DEFAULT_TAGS, aiDescription: `File: ${path.basename(filePath)}` };
+    console.error(`[Gemini] Error analyzing ${label}:`, err);
+    return { ...DEFAULT_TAGS, aiDescription: `File: ${label}` };
   }
 }

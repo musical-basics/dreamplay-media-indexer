@@ -27,6 +27,10 @@ import { upsertAsset, getAssetByPath } from '../lib/db';
 import { probeMedia, generateThumbnail, readMacColorLabel } from '../lib/media-utils';
 import { analyzeAssetWithGemini } from '../lib/tagger';
 
+// Maximum number of files to AI-tag concurrently.
+// Keeps Gemini API well under rate limits (15 RPM on free tier).
+const INGEST_CONCURRENCY = 4;
+
 // Load .env.local manually
 const dotenvPath = path.resolve(process.cwd(), '.env.local');
 if (fs.existsSync(dotenvPath)) {
@@ -175,6 +179,25 @@ async function ingestFile(filePath: string, processed: { count: number }): Promi
   console.log(`   ✓ [${status}] [${priority}] ${tags.subject} — ${tags.aiDescription.slice(0, 80)}`);
 }
 
+/**
+ * Run an async task for each item with a max concurrency limit.
+ * Like Promise.all but respects the concurrency cap.
+ */
+async function concurrentMap<T>(
+  items: T[],
+  fn: (item: T) => Promise<void>,
+  concurrency: number,
+): Promise<void> {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (queue.length > 0) {
+      const item = queue.shift();
+      if (item !== undefined) await fn(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
 async function walkAndIngest(dir: string, processed: { count: number }): Promise<void> {
   let entries: fs.Dirent[];
   try {
@@ -183,15 +206,30 @@ async function walkAndIngest(dir: string, processed: { count: number }): Promise
     return;
   }
 
+  // Separate directories and files
+  const subDirs: string[] = [];
+  const files: string[] = [];
   for (const entry of entries) {
     if (processed.count >= limit) break;
     if (entry.name.startsWith('.')) continue;
     if (entry.isDirectory()) {
-      if (shouldSkipDir(entry.name)) continue;
-      await walkAndIngest(path.join(dir, entry.name), processed);
+      if (!shouldSkipDir(entry.name)) subDirs.push(path.join(dir, entry.name));
     } else if (entry.isFile()) {
-      await ingestFile(path.join(dir, entry.name), processed);
+      files.push(path.join(dir, entry.name));
     }
+  }
+
+  // Process files in this directory with concurrency control
+  await concurrentMap(
+    files,
+    (filePath) => ingestFile(filePath, processed),
+    INGEST_CONCURRENCY,
+  );
+
+  // Recurse into subdirectories sequentially to avoid overwhelming disk + API
+  for (const subDir of subDirs) {
+    if (processed.count >= limit) break;
+    await walkAndIngest(subDir, processed);
   }
 }
 
