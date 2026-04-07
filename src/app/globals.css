@@ -1088,3 +1088,130 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 }
 .seq-edit-grip:active { cursor: grabbing; }
 .seq-edit-btn.danger:hover:not(:disabled) { color: var(--red); background: rgba(224,82,82,0.1); }
+
+/* ── Reel Generator Button ── */
+.reel-gen-btn {
+  background: linear-gradient(135deg, rgba(99,102,241,0.18), rgba(99,102,241,0.06));
+  border: 1px solid rgba(99,102,241,0.45);
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  color: #818cf8;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.reel-gen-btn:hover { background: rgba(99,102,241,0.25); border-color: #818cf8; }
+
+/* ── Reel Generator Panel ── */
+.reel-gen-panel { max-width: 720px; margin: 0 auto; width: 100%; }
+
+/* Topic + AI write row */
+.rg-topic-input {
+  flex: 1;
+  background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius-sm);
+  padding: 9px 12px; color: var(--text); font-size: 12px; font-family: inherit; outline: none; transition: border 0.15s;
+}
+.rg-topic-input:focus { border-color: #818cf8; }
+.rg-topic-input::placeholder { color: var(--text3); }
+
+.rg-ai-write-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(99,102,241,0.08));
+  border: 1px solid rgba(99,102,241,0.4);
+  border-radius: var(--radius-sm); padding: 9px 16px;
+  color: #818cf8; font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer; transition: all 0.15s;
+  white-space: nowrap; flex-shrink: 0;
+}
+.rg-ai-write-btn:hover { background: rgba(99,102,241,0.3); border-color: #818cf8; }
+.rg-ai-write-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Script textarea */
+.rg-script-ta {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius-sm);
+  padding: 12px 14px; color: var(--text); font-size: 13px; font-family: inherit; line-height: 1.65;
+  resize: vertical; outline: none; transition: border 0.15s;
+}
+.rg-script-ta:focus { border-color: #818cf8; }
+.rg-script-ta::placeholder { color: var(--text3); }
+
+.rg-word-count { font-size: 9px; color: var(--text3); text-align: right; margin-top: 2px; }
+
+/* Script preview (read-only display in step 2) */
+.rg-script-preview {
+  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 12px 14px; font-size: 12px; color: var(--text2); line-height: 1.7; max-height: 160px; overflow-y: auto;
+}
+
+/* Voice card grid */
+.rg-voice-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 7px;
+}
+.rg-voice-card {
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  background: var(--bg4); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 10px 12px; cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.rg-voice-card:hover { border-color: var(--border2); background: var(--bg3); }
+.rg-voice-card.active { background: rgba(99,102,241,0.12); border-color: rgba(99,102,241,0.5); }
+.rg-voice-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.rg-voice-desc { font-size: 9px; color: var(--text3); }
+
+/* Audio result */
+.rg-audio-result { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; animation: fadeIn 0.2s ease; }
+.rg-audio-label { font-size: 11px; color: var(--green); font-weight: 500; }
+.rg-audio-player { width: 100%; height: 38px; border-radius: var(--radius-sm); accent-color: #818cf8; }
+
+/* Avatar drop zone */
+.rg-avatar-drop {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--bg3); border: 1.5px dashed var(--border2); border-radius: var(--radius);
+  padding: 20px; cursor: pointer; font-size: 12px; color: var(--text3);
+  transition: all 0.15s; min-height: 72px;
+}
+.rg-avatar-drop:hover { border-color: #818cf8; color: var(--text); background: rgba(99,102,241,0.05); }
+.rg-avatar-drop.drag-over { border-color: #818cf8; background: rgba(99,102,241,0.1); color: var(--text); }
+.rg-avatar-drop-icon { font-size: 22px; }
+
+/* Avatar grid */
+.rg-avatar-grid {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
+}
+.rg-avatar-thumb {
+  position: relative; width: 72px; height: 72px; border-radius: 8px; overflow: hidden;
+  border: 2px solid var(--border); cursor: pointer; transition: border-color 0.15s; flex-shrink: 0;
+}
+.rg-avatar-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rg-avatar-thumb:hover { border-color: #818cf8; }
+.rg-avatar-thumb.selected { border-color: #818cf8; box-shadow: 0 0 0 2px rgba(99,102,241,0.4); }
+.rg-avatar-check {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: rgba(99,102,241,0.55); color: #fff; font-size: 22px; font-weight: 700;
+}
+
+/* Generate info bar */
+.rg-generate-info {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 10px 14px; font-size: 11px; color: var(--text3);
+}
+.rg-generate-warn { color: #f97316; font-weight: 500; }
+
+/* Reel result */
+.rg-result { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; animation: fadeIn 0.2s ease; }
+.rg-result-label { font-size: 13px; font-weight: 600; color: var(--green); }
+.rg-result-video {
+  width: 100%; max-width: 340px; max-height: 600px;
+  border-radius: 12px; border: 1px solid var(--border2); background: #000;
+  object-fit: contain; display: block;
+}
+.rg-download-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.2), rgba(99,102,241,0.08));
+  border: 1px solid rgba(99,102,241,0.45); border-radius: var(--radius-sm);
+  padding: 10px 20px; color: #818cf8; font-size: 13px; font-weight: 600;
+  text-decoration: none; transition: all 0.15s; align-self: flex-start;
+}
+.rg-download-btn:hover { background: rgba(99,102,241,0.3); border-color: #818cf8; }
+

@@ -1424,6 +1424,401 @@ function StoryBuilder({ onClose }: StoryBuilderProps) {
   );
 }
 
+// ── Reel Generator ──────────────────────────────────────────────────────────
+const REEL_FORMATS = [
+  { id: 'instagram-reel', label: '📱 Instagram Reel', sec: 30 },
+  { id: 'tiktok', label: '🎵 TikTok', sec: 30 },
+  { id: 'youtube-short', label: '▶️ YouTube Short', sec: 45 },
+  { id: 'facebook-ad', label: '📢 Facebook Ad', sec: 20 },
+  { id: 'custom', label: '🎬 Custom', sec: 60 },
+];
+const VOICE_PRESETS = [
+  { id: 'Kore', label: 'Kore', tone: 'narrator', desc: 'Professional · Clear' },
+  { id: 'Charon', label: 'Charon', tone: 'narrator', desc: 'Deep · Authoritative' },
+  { id: 'Aoede', label: 'Aoede', tone: 'conversational', desc: 'Warm · Friendly' },
+  { id: 'Puck', label: 'Puck', tone: 'energetic', desc: 'Energetic · Playful' },
+  { id: 'Fenrir', label: 'Fenrir', tone: 'luxury', desc: 'Smooth · Premium' },
+];
+const REEL_TONES = [
+  { id: 'narrator', label: '🎙 Narrator' },
+  { id: 'conversational', label: '💬 Conversational' },
+  { id: 'energetic', label: '⚡ Energetic' },
+  { id: 'luxury', label: '✦ Luxury' },
+];
+
+interface Avatar { fileName: string; filePath: string; url: string; uploadedAt: number; }
+
+function ReelGenerator({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState(1);
+  // Step 1 — Script
+  const [format, setFormat] = useState('instagram-reel');
+  const [targetSec, setTargetSec] = useState(30);
+  const [topic, setTopic] = useState('');
+  const [script, setScript] = useState('');
+  const [writingScript, setWritingScript] = useState(false);
+  const [scriptError, setScriptError] = useState('');
+  const [tone, setTone] = useState('narrator');
+  // Step 2 — Voice
+  const [ttsModel, setTtsModel] = useState('gemini-2.5-flash-preview-tts');
+  const [voiceName, setVoiceName] = useState('Kore');
+  const [generatingAudio, setGeneratingAudio] = useState(false);
+  const [audioFileName, setAudioFileName] = useState('');
+  const [audioPath, setAudioPath] = useState('');
+  const [audioError, setAudioError] = useState('');
+  // Step 3 — Reel
+  const [avatars, setAvatars] = useState<Avatar[]>([]);
+  const [selectedAvatar, setSelectedAvatar] = useState<Avatar | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarDragOver, setAvatarDragOver] = useState(false);
+  const avatarFileRef = useRef<HTMLInputElement>(null);
+  const [generatingReel, setGeneratingReel] = useState(false);
+  const [reelUrl, setReelUrl] = useState('');
+  const [reelFileName, setReelFileName] = useState('');
+  const [reelError, setReelError] = useState('');
+  const [pollMsg, setPollMsg] = useState('');
+
+  useEffect(() => { fetchAvatars(); }, []);
+
+  async function fetchAvatars() {
+    try {
+      const res = await fetch('/api/reel/avatars');
+      const data = await res.json();
+      setAvatars(data.avatars ?? []);
+    } catch { /* ignore */ }
+  }
+
+  async function handleWriteScript() {
+    if (!topic.trim()) return;
+    setWritingScript(true); setScriptError('');
+    try {
+      const res = await fetch('/api/reel/script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, format, targetDurationSec: targetSec, tone }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setScript(data.script);
+    } catch (e) { setScriptError(String(e)); }
+    setWritingScript(false);
+  }
+
+  async function handleGenerateAudio() {
+    if (!script.trim()) return;
+    setGeneratingAudio(true); setAudioError(''); setAudioFileName(''); setAudioPath('');
+    try {
+      const res = await fetch('/api/reel/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script, voiceName, model: ttsModel, style: tone }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setAudioFileName(data.fileName);
+      setAudioPath(data.audioPath);
+    } catch (e) { setAudioError(String(e)); }
+    setGeneratingAudio(false);
+  }
+
+  async function handleUploadAvatar(file: File) {
+    setUploadingAvatar(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/reel/avatars', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      await fetchAvatars();
+      // Auto-select newly uploaded avatar
+      setSelectedAvatar({ fileName: data.fileName, filePath: data.filePath, url: data.url, uploadedAt: Date.now() });
+    } catch { /* ignore */ }
+    setUploadingAvatar(false);
+  }
+
+  async function handleGenerateReel() {
+    if (!audioPath || !selectedAvatar) return;
+    setGeneratingReel(true); setReelError(''); setReelUrl(''); setReelFileName('');
+    setPollMsg('Sending to Veo for talking head generation… (~2-5 min)');
+    try {
+      const res = await fetch('/api/reel/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script,
+          audioPath,
+          avatarImagePath: selectedAvatar.filePath,
+          aspectRatio: (format === 'instagram-reel' || format === 'tiktok' || format === 'youtube-short') ? '9:16' : '16:9',
+          durationSeconds: Math.min(targetSec, 30),
+        }),
+      });
+      setPollMsg('Merging voiceover audio...');
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setReelUrl(data.previewUrl);
+      setReelFileName(data.outputFileName);
+      setPollMsg('');
+    } catch (e) { setReelError(String(e)); setPollMsg(''); }
+    setGeneratingReel(false);
+  }
+
+  const canProceedToVoice = script.trim().length > 10;
+  const canProceedToReel = audioPath && selectedAvatar;
+
+  return (
+    <div className="story-overlay" onClick={e => { if ((e.target as HTMLElement).classList.contains('story-overlay')) onClose(); }}>
+      <div className="story-panel reel-gen-panel">
+        {/* Header */}
+        <div className="story-header">
+          <div className="story-header-left">
+            <span className="story-icon">🎙</span>
+            <div>
+              <div className="story-title">Reel Generator</div>
+              <div className="story-subtitle">AI script → Gemini voiceover → Veo talking head → 9:16 reel</div>
+            </div>
+          </div>
+          <button className="story-close-btn" onClick={onClose}>✕</button>
+        </div>
+
+        {/* Stepper */}
+        <div className="story-stepper">
+          {['Script', 'Voice', 'Generate'].map((s, i) => (
+            <button
+              key={s}
+              className={`story-step ${step === i + 1 ? 'active' : ''} ${i === 0 || (i === 1 && canProceedToVoice) || (i === 2 && canProceedToReel) ? 'enabled' : 'disabled'}`}
+              onClick={() => {
+                if (i === 0) setStep(1);
+                else if (i === 1 && canProceedToVoice) setStep(2);
+                else if (i === 2 && canProceedToReel) setStep(3);
+              }}
+            >
+              <span className="story-step-num">{i + 1}</span>
+              <span className="story-step-label">{s}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="story-content">
+
+          {/* ── Step 1: Script ── */}
+          {step === 1 && (
+            <div className="story-step-content">
+              <div className="story-section-title">Write Your Script</div>
+
+              <div className="story-field">
+                <div className="story-field-label">Format</div>
+                <div className="story-format-chips">
+                  {REEL_FORMATS.map(f => (
+                    <button key={f.id} className={`story-format-chip ${format === f.id ? 'active' : ''}`}
+                      onClick={() => { setFormat(f.id); setTargetSec(f.sec); }}>
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="story-field">
+                <div className="story-field-label">Target Length</div>
+                <div className="story-duration-row">
+                  {[15, 20, 30, 45, 60].map(s => (
+                    <button key={s} className={`story-dur-chip ${targetSec === s ? 'active' : ''}`} onClick={() => setTargetSec(s)}>{s}s</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="story-field">
+                <div className="story-field-label">Tone / Style</div>
+                <div className="story-chip-row">
+                  {REEL_TONES.map(t => (
+                    <button key={t.id} className={`story-chip ${tone === t.id ? 'active' : ''}`} onClick={() => setTone(t.id)}>{t.label}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="story-field">
+                <div className="story-field-label">Topic / Intent <span style={{ fontWeight: 400, opacity: 0.5 }}>(for AI writer)</span></div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    className="rg-topic-input"
+                    placeholder="e.g. Why small-handed pianists love the DS 6.0…"
+                    value={topic}
+                    onChange={e => setTopic(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleWriteScript()}
+                  />
+                  <button className="rg-ai-write-btn" onClick={handleWriteScript} disabled={writingScript || !topic.trim()}>
+                    {writingScript ? <><span className="prompt-spinner" />Writing…</> : '✨ AI Write'}
+                  </button>
+                </div>
+                {scriptError && <div className="prompt-error">⚠ {scriptError}</div>}
+              </div>
+
+              <div className="story-field">
+                <div className="story-field-label">Script <span style={{ fontWeight: 400, opacity: 0.5 }}>· edit freely</span></div>
+                <textarea
+                  className="rg-script-ta"
+                  placeholder="Write or paste your script here, or use AI Write above…"
+                  value={script}
+                  onChange={e => setScript(e.target.value)}
+                  rows={8}
+                />
+                {script && (
+                  <div className="rg-word-count">~{script.split(/\s+/).filter(Boolean).length} words · ~{Math.round(script.split(/\s+/).filter(Boolean).length / 2.5)}s spoken</div>
+                )}
+              </div>
+
+              <button className="story-build-btn" disabled={!canProceedToVoice} onClick={() => setStep(2)}>
+                Next: Generate Voiceover →
+              </button>
+            </div>
+          )}
+
+          {/* ── Step 2: Voice ── */}
+          {step === 2 && (
+            <div className="story-step-content">
+              <div className="story-section-title">Generate Voiceover</div>
+
+              <div className="story-field">
+                <div className="story-field-label">TTS Model</div>
+                <div className="story-chip-row">
+                  {[
+                    { id: 'gemini-2.5-flash-preview-tts', label: '⚡ Flash TTS', desc: 'Fast · Low latency' },
+                    { id: 'gemini-2.5-pro-preview-tts', label: '🔊 Pro TTS', desc: 'Highest quality' },
+                  ].map(m => (
+                    <button key={m.id} className={`story-chip model-chip ${ttsModel === m.id ? 'active' : ''}`}
+                      onClick={() => setTtsModel(m.id)} title={m.desc}>
+                      {m.label}
+                      {ttsModel === m.id && <span className="model-chip-desc">{m.desc}</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="story-field">
+                <div className="story-field-label">Voice</div>
+                <div className="rg-voice-grid">
+                  {VOICE_PRESETS.map(v => (
+                    <button key={v.id} className={`rg-voice-card ${voiceName === v.id ? 'active' : ''}`} onClick={() => setVoiceName(v.id)}>
+                      <div className="rg-voice-name">{v.label}</div>
+                      <div className="rg-voice-desc">{v.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="story-field">
+                <div className="story-field-label">Script Preview</div>
+                <div className="rg-script-preview">{script}</div>
+              </div>
+
+              <button className="story-build-btn" onClick={handleGenerateAudio} disabled={generatingAudio || !script.trim()}>
+                {generatingAudio ? <><span className="prompt-spinner" />Generating voiceover…</> : '🎙 Generate Voiceover'}
+              </button>
+
+              {audioError && <div className="prompt-error" style={{ marginTop: 12 }}>⚠ {audioError}</div>}
+
+              {audioFileName && !generatingAudio && (
+                <div className="rg-audio-result">
+                  <div className="rg-audio-label">✓ Voiceover ready — preview below</div>
+                  <audio
+                    key={audioFileName}
+                    src={`/api/reel/output?name=${encodeURIComponent(audioFileName)}&type=audio`}
+                    controls
+                    className="rg-audio-player"
+                  />
+                  <button className="story-build-btn" style={{ marginTop: 12 }} onClick={() => setStep(3)}>
+                    Next: Create Talking Head Reel →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Step 3: Generate Reel ── */}
+          {step === 3 && (
+            <div className="story-step-content">
+              <div className="story-section-title">Create Talking Head Reel</div>
+
+              <div className="story-field">
+                <div className="story-field-label">Avatar / Speaker Photo <span style={{ fontWeight: 400, opacity: 0.5 }}>· your talking head image</span></div>
+                <div
+                  className={`rg-avatar-drop ${avatarDragOver ? 'drag-over' : ''}`}
+                  onClick={() => avatarFileRef.current?.click()}
+                  onDragOver={e => { e.preventDefault(); setAvatarDragOver(true); }}
+                  onDragLeave={() => setAvatarDragOver(false)}
+                  onDrop={e => {
+                    e.preventDefault(); setAvatarDragOver(false);
+                    const f = e.dataTransfer.files[0];
+                    if (f) handleUploadAvatar(f);
+                  }}
+                >
+                  {uploadingAvatar
+                    ? <span className="prompt-spinner" />
+                    : <><span className="rg-avatar-drop-icon">📸</span><span>Drop photo or click to upload</span></>}
+                  <input ref={avatarFileRef} type="file" accept="image/*" style={{ display: 'none' }}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleUploadAvatar(f); }} />
+                </div>
+
+                {avatars.length > 0 && (
+                  <div className="rg-avatar-grid">
+                    {avatars.map(av => (
+                      <div
+                        key={av.fileName}
+                        className={`rg-avatar-thumb ${selectedAvatar?.fileName === av.fileName ? 'selected' : ''}`}
+                        onClick={() => setSelectedAvatar(av)}
+                      >
+                        <img src={av.url} alt={av.fileName} />
+                        {selectedAvatar?.fileName === av.fileName && <div className="rg-avatar-check">✓</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {audioFileName && (
+                <div className="story-field">
+                  <div className="story-field-label">Voiceover</div>
+                  <audio
+                    src={`/api/reel/output?name=${encodeURIComponent(audioFileName)}&type=audio`}
+                    controls className="rg-audio-player"
+                  />
+                </div>
+              )}
+
+              <div className="rg-generate-info">
+                <span>🎞 Veo will animate your avatar speaking the voiceover — takes ~2-5 min</span>
+                {canProceedToReel && !selectedAvatar && <span className="rg-generate-warn">Select an avatar above to continue</span>}
+              </div>
+
+              <button
+                className="story-build-btn"
+                onClick={handleGenerateReel}
+                disabled={generatingReel || !audioPath || !selectedAvatar}
+              >
+                {generatingReel ? <><span className="prompt-spinner" />{pollMsg || 'Generating reel…'}</> : '🎬 Generate Reel'}
+              </button>
+
+              {reelError && <div className="prompt-error" style={{ marginTop: 12 }}>⚠ {reelError}</div>}
+
+              {reelUrl && !generatingReel && (
+                <div className="rg-result">
+                  <div className="rg-result-label">✓ Reel ready!</div>
+                  <video src={reelUrl} controls className="rg-result-video" playsInline />
+                  <a
+                    className="rg-download-btn"
+                    href={`/api/reel/output?name=${encodeURIComponent(reelFileName)}&dl=1`}
+                    download={reelFileName}
+                  >
+                    ⬇ Download Reel
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ───────────────────────────────────────────────────────────────
 export default function MediaIndexer() {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -1435,6 +1830,7 @@ export default function MediaIndexer() {
   const [exporting, setExporting] = useState(false);
   const [copyMsg, setCopyMsg] = useState('');
   const [showStoryBuilder, setShowStoryBuilder] = useState(false);
+  const [showReelGenerator, setShowReelGenerator] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(180);
   const [scanStatus, setScanStatus] = useState<{ status: 'idle' | 'scanning'; lastScan: number | null }>({ status: 'idle', lastScan: null });
   const [scanning, setScanning] = useState(false);
@@ -1698,6 +2094,7 @@ export default function MediaIndexer() {
             </div>
             <div className="grid-actions">
               <button className="story-builder-btn" onClick={() => setShowStoryBuilder(true)}>🎬 Build Story</button>
+              <button className="reel-gen-btn" onClick={() => setShowReelGenerator(true)}>🎙 Reel Generator</button>
               {selected.size > 0 && (
                 <>
                   <button className="btn-ghost" onClick={() => setSelected(new Set())}>Deselect All</button>
@@ -1844,6 +2241,7 @@ export default function MediaIndexer() {
       )}
 
       {showStoryBuilder && <StoryBuilder onClose={() => setShowStoryBuilder(false)} />}
+      {showReelGenerator && <ReelGenerator onClose={() => setShowReelGenerator(false)} />}
     </div>
   );
 }

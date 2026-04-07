@@ -106,15 +106,44 @@ export async function POST(req: NextRequest) {
       } catch { /* ignore */ }
     }
 
-    // Fetch best assets from DB
-    const { assets: allAssets } = queryAssets({
-      dsModel: dsModel || undefined,
-      campaign: campaign || undefined,
-      limit: 80,
-    });
+    // Fetch assets — if subjects are specified, hard-filter to only those subjects
+    // This prevents the AI from picking off-subject clips even when it "tries" to respect intent
+    const hasSubjectFilter = subjects && subjects.length > 0;
 
-    // Score assets: finals > high priority > others; vary subjects
-    const scored = allAssets
+    let candidateAssets: AssetRecord[] = [];
+
+    if (hasSubjectFilter) {
+      // Fetch matching-subject assets first
+      for (const subj of subjects!) {
+        const { assets } = queryAssets({
+          subject: subj,
+          dsModel: dsModel || undefined,
+          campaign: campaign || undefined,
+          limit: 40,
+        });
+        candidateAssets.push(...assets);
+      }
+      // Deduplicate by id
+      const seen = new Set<string>();
+      candidateAssets = candidateAssets.filter(a => {
+        if (seen.has(a.id)) return false;
+        seen.add(a.id);
+        return true;
+      });
+    }
+
+    // Fall back to all assets if subject filter returned too few (< 6 clips)
+    if (candidateAssets.length < 6) {
+      const { assets: allAssets } = queryAssets({
+        dsModel: dsModel || undefined,
+        campaign: campaign || undefined,
+        limit: 80,
+      });
+      candidateAssets = allAssets;
+    }
+
+    // Score and rank — matching subjects still get a priority boost
+    const scored = candidateAssets
       .map(a => ({
         asset: a,
         score:
@@ -137,6 +166,10 @@ export async function POST(req: NextRequest) {
 
     const formatDesc = FORMAT_CONTEXT[format] || FORMAT_CONTEXT['custom'];
 
+    const subjectConstraint = hasSubjectFilter
+      ? `SUBJECT CONSTRAINT: You MUST only select clips whose subject field matches one of: [${subjects!.join(', ')}]. Do NOT pick clips with other subject values. This is a hard requirement.`
+      : '';
+
     const prompt = `You are building a short-form video for DreamPlay Pianos.
 ${styleGuide}
 FORMAT: ${formatDesc}
@@ -145,6 +178,7 @@ INTENT: ${intent || 'Showcase the DreamPlay piano and drive interest'}
 DS MODEL FOCUS: ${dsModel || 'Any'}
 CAMPAIGN: ${campaign || 'General'}
 MOOD DIRECTION: ${moods?.join(', ') || 'cinematic, aspirational'}
+${subjectConstraint}
 ${customNotes ? `ADDITIONAL NOTES: ${customNotes}` : ''}
 
 AVAILABLE CLIPS (pick the best ones):
